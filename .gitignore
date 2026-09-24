@@ -6,5 +6,5 @@ __pycache__/
 samples/
 *.mp4
 !website/data/videos/*.mp4
-predictions.json
+/predictions.json
 weights/*.pt.part

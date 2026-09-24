@@ -136,7 +136,7 @@ def main():
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     report = {"videos": []}
-    for path in sorted(Path(args.videos).glob("*.mp4")):
+    for path in sorted(p for p in Path(args.videos).iterdir() if p.suffix.lower() == ".mp4"):
         print(f"[eda] {path.name}", flush=True)
         props = video_properties(path)
         res_path = DATA / "results" / f"{path.stem}.json"

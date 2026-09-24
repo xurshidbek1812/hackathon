@@ -48,7 +48,7 @@ def main():
 
     (DATA / "results").mkdir(parents=True, exist_ok=True)
     (DATA / "frames").mkdir(parents=True, exist_ok=True)
-    videos = sorted(Path(args.videos).glob("*.mp4"))
+    videos = sorted(p for p in Path(args.videos).iterdir() if p.suffix.lower() == ".mp4")
     prior = None
     index = []
     for path in videos:

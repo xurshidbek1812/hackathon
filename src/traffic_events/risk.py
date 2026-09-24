@@ -137,10 +137,11 @@ class RiskModel:
 
     # ------------------------------------------------------------------ features
     def _features(self, t: float) -> dict[str, float]:
+        min_scale = self.p.min_scale * self.height
         users = []
         for h in self.hist.values():
-            if h.hits < 3 or t - h.t[-1] > 1e-6:
-                continue
+            if h.hits < 3 or t - h.t[-1] > 1e-6 or h.scale[-1] < min_scale:
+                continue            # far-away road users: boxes overlap by perspective, motion is noise
             v = h.velocity(t - 0.6, t)
             if v is None:
                 continue
@@ -155,6 +156,7 @@ class RiskModel:
 
     @staticmethod
     def _ttc(users) -> float:
+        """Closest predicted approach between two road users on crossing paths."""
         best = 0.0
         for i in range(len(users)):
             hi, pi, vi, si = users[i]
@@ -162,22 +164,28 @@ class RiskModel:
                 hj, pj, vj, sj = users[j]
                 if hi.category == PERSON and hj.category == PERSON:
                     continue
+                ni, nj = np.linalg.norm(vi) / si, np.linalg.norm(vj) / sj
+                if ni < 1.0 or nj < 1.0:
+                    continue        # rolling up to a standing queue closes the gap too
+                cos = float(vi @ vj) / (np.linalg.norm(vi) * np.linalg.norm(vj))
+                min_angle = 30 if PERSON in (hi.category, hj.category) else 45
+                if abs(cos) > math.cos(math.radians(min_angle)):
+                    continue        # following, merging, or passing on the opposite carriageway
                 scale = 0.5 * (si + sj)
                 rel_p, rel_v = pj - pi, vj - vi
                 if np.linalg.norm(rel_p) / scale > 8:
                     continue
                 v2 = float(rel_v @ rel_v)
-                if v2 < 1e-6:
-                    continue
                 ttc = -float(rel_p @ rel_v) / v2
                 if not 0 < ttc < 5:
                     continue
                 miss = float(np.linalg.norm(rel_p + rel_v * ttc)) / scale
-                best = max(best, math.exp(-ttc / 1.5) * max(0.0, 1.5 - miss) / 1.5)
+                best = max(best, math.exp(-ttc / 1.5) * max(0.0, 1.0 - miss))
         return best
 
     @staticmethod
     def _brake(users, t: float) -> float:
+        """Hardest deceleration from real speed (body units/s lost in ~1 s, scaled to [0, 1])."""
         best = 0.0
         for h, _, v_now, s in users:
             if h.category not in (VEHICLE, BIKE):
@@ -186,28 +194,31 @@ class RiskModel:
             if v_before is None:
                 continue
             before, now = np.linalg.norm(v_before) / s, np.linalg.norm(v_now) / s
-            if before > 1.0:
-                best = max(best, min(1.0, (before - now) / 3.0))
+            if before > 2.0:
+                best = max(best, float(np.clip((before - now - 1.0) / 2.0, 0.0, 1.0)))
         return best
 
     @staticmethod
     def _swerve(users, t: float) -> float:
         best = 0.0
         for h, _, v_now, s in users:
-            if h.category not in (VEHICLE, BIKE) or np.linalg.norm(v_now) / s < 0.8:
+            if h.category not in (VEHICLE, BIKE) or np.linalg.norm(v_now) / s < 1.5:
                 continue
             v_before = h.velocity(t - 1.2, t - 0.6)
-            if v_before is None or np.linalg.norm(v_before) / s < 0.8:
+            if v_before is None or np.linalg.norm(v_before) / s < 1.5:
                 continue
             cos = float(v_now @ v_before) / (np.linalg.norm(v_now) * np.linalg.norm(v_before))
-            best = max(best, min(1.0, math.degrees(math.acos(np.clip(cos, -1, 1))) / 45.0))
+            deg = math.degrees(math.acos(np.clip(cos, -1, 1)))
+            best = max(best, float(np.clip((deg - 15.0) / 30.0, 0.0, 1.0)))
         return best
 
     def _wrong_way(self, users) -> float:
         if self.flow is None:
             return 0.0
         for h, p, v, s in users:
-            if h.category not in (VEHICLE, BIKE) or np.linalg.norm(v) / s < 0.8:
+            if h.category not in (VEHICLE, BIKE) or np.linalg.norm(v) / s < 1.0:
+                continue
+            if self.scene.intersection is not None and self.scene.inside(self.scene.intersection, p[None])[0]:
                 continue
             gx = min(int(p[0] / self.width * GRID_W), GRID_W - 1)
             gy = min(int(p[1] / self.height * GRID_H), GRID_H - 1)
@@ -217,13 +228,16 @@ class RiskModel:
         return 0.0
 
     def _ped_on_road(self, users) -> float:
-        peds = [(p, s) for h, p, _, s in users if h.category == PERSON]
-        if not peds or not self.scene.has_road:
+        """A pedestrian on the carriageway outside any crossing, next to moving traffic."""
+        if self.scene.crossings is None or not self.scene.has_road:
             return 0.0
         movers = [(p, s) for h, p, v, s in users
-                  if h.category in (VEHICLE, BIKE) and np.linalg.norm(v) / s > 0.8]
-        for p, s in peds:
-            if not self.scene.on_road(p[None])[0]:
+                  if h.category in (VEHICLE, BIKE) and np.linalg.norm(v) / s > 1.0]
+        for h, p, _, s in users:
+            if h.category != PERSON:
+                continue
+            height = s * 1.6                      # a person box is ~2.5x taller than wide: h ~ 1.6 sqrt(w*h)
+            if not self.scene.on_road(p[None], margin=0.5 * height)[0] or                     self.scene.in_crossing(p[None], 0.6 * height)[0]:
                 continue
             for q, sq in movers:
                 if np.linalg.norm(p - q) / sq < 3:

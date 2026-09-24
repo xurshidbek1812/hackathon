@@ -4,17 +4,17 @@
   const API = (window.APP_CONFIG && window.APP_CONFIG.apiBase) || "";
 
   const RULES = [
-    ["accident", "Boxes touch at the same ground depth after fast closing, then hard braking / swerve / fall / both stay stopped", "first contact → all involved stop or leave", "rule"],
-    ["near_miss", "Predicted time-to-collision < 1.2 s with miss distance < 1 body, plus hard braking or swerve, no contact", "evasive action → road users clear", "rule"],
-    ["red_light", "Vehicle front crosses a stop line in its approach direction while the signal-head ROI reads red", "crosses line → leaves intersection", "pixel"],
+    ["accident", "Boxes touch at the same ground depth after fast closing, with hard braking / swerve / fall, and the road users come to rest", "first contact → all involved stop or leave", "rule"],
+    ["near_miss", "Crossing paths (45–135°, 30–150° with a pedestrian), time-to-collision < 1.2 s, miss < 0.6 body held ≥ 0.3 s, plus hard braking or swerve, no contact", "evasive action → road users clear", "rule"],
+    ["red_light", "Vehicle front crosses the stop line and drives on while ≥ 2 other vehicles stand at the line and nothing else crosses (red inferred from the queue; the signal heads face away)", "crosses line → leaves junction box", "rule"],
     ["wrong_way", "Moving ≥ 1.5 s against the lane direction (scene lanes or the learned flow field)", "enters opposing flow → back / leaves", "rule"],
-    ["illegal_u_turn", "Heading reverses ≥ 150° within 20 s outside zones where U-turns are allowed", "starts turning → completes turn", "rule"],
+    ["illegal_u_turn", "Heading reverses ≥ 150° within 12 s, driving away on a leg parallel to and close by the one it came in on, with no tracking gap; outside zones where U-turns are allowed", "starts turning → completes turn", "rule"],
     ["stopped_vehicle", "Stationary ≥ 10 s on the carriageway, not in a learned queue zone and not released with its queue", "stops → moves / removed", "rule"],
-    ["jaywalking", "Pedestrian's feet inside the carriageway, outside every crossing, for ≥ 1 s", "steps onto road → leaves road", "rule"],
-    ["failure_to_yield", "Vehicle drives through a crossing while a pedestrian is on it", "enters crossing → leaves", "rule"],
+    ["jaywalking", "Pedestrian's feet half a body height inside the carriageway, clear of every crossing, for ≥ 2 s", "steps onto road → leaves road", "rule"],
+    ["failure_to_yield", "Vehicle drives through a crossing while a pedestrian is on it (off the kerb) within 3 vehicle lengths", "enters crossing → leaves", "rule"],
     ["illegal_turn", "Entry zone → exit zone pair listed as prohibited in the scene config", "starts turning → completes turn", "rule"],
     ["solid_line_crossing", "Bottom corners of the box cross a solid-line polyline and stay across", "wheel crosses → fully in new lane", "rule"],
-    ["stop_line", "Vehicle stops with its front just past the stop line while the signal is red", "stops → signal turns green", "pixel"],
+    ["stop_line", "Vehicle stops with its front just past the stop line while the queue shows red", "stops → queue moves off (green)", "rule"],
     ["congestion", "≥ 4 vehicles in a direction, ≥ 75 % of them crawling, for ≥ 30 s", "queue stops → queue clears", "rule"],
     ["road_obstacle", "Detected animal / loose object on the road, or a static foreground blob nobody detected", "appears → removed", "pixel"],
     ["fire_smoke", "Flickering saturated orange pixels (minus static lamps), or a grey, low-texture, growing blob", "first smoke → clears", "pixel"],
@@ -93,7 +93,7 @@
       view.appendChild(note);
     };
     index.forEach((v, i) => {
-      const b = html("button", "tab", v.video.replace(/\.mp4$/, ""));
+      const b = html("button", "tab", v.video.replace(/\.mp4$/i, ""));
       b.addEventListener("click", () => show(v, b));
       tabs.appendChild(b);
       if (i === 0) show(v, b);
@@ -162,7 +162,7 @@
     const view = html("div");
     host.append(tabs, view);
     eda.videos.forEach((v, i) => {
-      const stem = v.props.video.replace(/\.mp4$/, "");
+      const stem = v.props.video.replace(/\.mp4$/i, "");
       const b = html("button", "tab", stem);
       const show = () => {
         tabs.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b));

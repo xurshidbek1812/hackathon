@@ -108,6 +108,7 @@ class RiskParams:
     imgsz: int = 640
     budget_ratio: float = 1.0               # target wall time / video time for Part B
     history_sec: float = 2.0
+    min_scale: float = 0.025                # ignore road users smaller than this x frame height
     ema: float = 0.35
     decay_per_sec: float = 0.6              # how fast a peak fades when evidence disappears
     bias: float = -4.0

@@ -9,6 +9,13 @@ python run_submission.py --videos /data/test --out predictions.json
 
 No internet is needed at run time: the detector weights ship in `weights/yolo11m.pt`
 (`weights/download.sh` restores them if missing and checks the SHA-256).
+`run_submission.py`, `evaluate.py` and `examples/` are the organizers' starter-kit files, unchanged.
+
+**Runtime** on the 340 s, 3840×2160 @ 29.97 fps sample video, measured with the official harness on a
+laptop GTX 1650 Ti (fp32; several times slower than the T4 used for evaluation):
+Part A 246 s + Part B 303 s = **549 s of a 1021 s budget**. Decoding 4K H.264 is the bottleneck, so
+decoding runs in a reader thread that overlaps with inference (Part A), and Part B's detector runs in a
+worker thread with a fixed one-sample lag (see *Determinism*).
 
 ---
 
@@ -20,7 +27,7 @@ run_submission.py            starter-kit harness (unchanged)
 evaluate.py                  starter-kit metric (unchanged)
 requirements.txt             inference dependencies (requirements-dev.txt adds demo + tests)
 weights/                     yolo11m.pt, download.sh, SHA256SUMS
-configs/scene.json           scene layout from samples/camera.md (normalised coordinates)
+configs/scene.json           scene layout drawn from the sample view (normalised coordinates)
 configs/flow_prior.npz       lane directions + queue zones learned from the sample videos
 src/traffic_events/
   detector.py                YOLO wrapper, rider / vehicle-occupant suppression
@@ -72,8 +79,37 @@ tests/                       unit tests: every rule on synthetic trajectories, t
 | road_obstacle | detected animal / static loose object on the road, or a static foreground blob nobody detected |
 | fire_smoke | flickering fire-coloured pixels (static lamps removed), or a grey, smooth, growing foreground blob |
 
-Rules whose scene information is missing (e.g. no signal head configured) switch themselves off: a class we
-predict that never occurs in the test set costs a full class of macro-F1.
+Rules whose scene information is missing switch themselves off: a class we predict that never occurs in the
+test set costs a full class of macro-F1.
+
+### Scene configuration
+
+The starter kit arrived without `camera.md`, so `configs/scene.json` was drawn by hand from sample frames
+(with `website/tools/scene_editor.html`): the carriageway outline, the three pedestrian crossings, the
+pedestrian islands and median (excluded), the main approach's stop line, and the junction box. The signal
+heads of the main approach face away from the camera, so that stop line has no signal region: its phase is
+**inferred from the queue** (`rules/signal.py`, `QueuePhase`) — red when at least two other vehicles have been
+standing at the line for 5 s and no other vehicle has crossed it in the last 4 s. Lane directions, the road
+mask and signal-queue zones are learned from the sample trajectories (`configs/flow_prior.npz`).
+
+### Calibration on the sample video
+
+With no labels, every rule was checked by rendering its candidate events (tracks drawn on the frame) and
+inspecting them. The first full run produced 86 events on 340 s of ordinary traffic; the fixes that brought it
+to 13 plausible events were:
+
+| Problem seen on the real video | Fix |
+|---|---|
+| NaN detections on GTX 16xx in fp16 | fp16 off on those cards; non-finite boxes dropped |
+| identity switches in dense queues (fake U-turns, near misses) | IoU gate 0.3, split tracks at impossible jumps, re-link parked fragments only within 8 s |
+| boxes cut by the frame edge fake a heading reversal | observations touching the border are dropped |
+| platoons and queue-joining counted as near misses | near miss needs crossing paths (45–135° between vehicles, 30–150° with a pedestrian), both moving, danger held ≥ 0.3 s |
+| far, tiny vehicles overlap through perspective | collision rules ignore road users smaller than 2.5 % of frame height |
+| turn-lane queue fooled the inferred red phase | red needs ≥ 2 vehicles waiting ≥ 5 s and no traffic flowing through |
+| pedestrians on the kerb next to crossings | margins scale with person height; failure-to-yield needs the pedestrian on the carriageway and within 3 vehicle lengths |
+| legal junction turns flagged as wrong-way | wrong-way only judged outside the junction box, on cells with ≥ 80 % consistent direction |
+
+The Part B cues were recalibrated the same way; on the sample (no accidents) the risk now stays below 0.2.
 
 ## Reproducing the results
 
@@ -92,7 +128,8 @@ Live demo locally: `uvicorn demo.server:app --port 7860`, then open http://local
 ## Determinism
 
 Seeds are fixed (`random`, `numpy`, `torch`), cuDNN benchmarking is off, the tracker and rules are
-deterministic. The only wall-clock-dependent behaviour is an emergency frame skip that triggers when a machine
+deterministic. Part B's worker thread does not make the output timing-dependent: the detection submitted at
+sample *k* is always collected at sample *k+1*, so the score lags by exactly one sample (0.1 s) on every run. The only wall-clock-dependent behaviour is an emergency frame skip that triggers when a machine
 runs at more than **twice** the time budget; on the target GPU it never triggers.
 
 ## Datasets and models

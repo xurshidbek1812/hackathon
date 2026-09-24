@@ -47,12 +47,12 @@
       <div class="diagram-wrap">
         <svg class="diagram" viewBox="0 0 1000 330" role="img" aria-label="Pipeline diagram">
           <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
-          <g class="node learned"><rect x="10" y="40" width="150" height="64" rx="10"/><text x="85" y="68">Video frames</text><text x="85" y="88" class="sub">every 2nd frame</text></g>
+          <g class="node learned"><rect x="10" y="40" width="150" height="64" rx="10"/><text x="85" y="68">Video frames</text><text x="85" y="88" class="sub">10 fps, 960 px</text></g>
           <g class="node learned"><rect x="200" y="40" width="160" height="64" rx="10"/><text x="280" y="68">YOLO11 detector</text><text x="280" y="88" class="sub">COCO · learned</text></g>
           <g class="node rule"><rect x="400" y="40" width="160" height="64" rx="10"/><text x="480" y="68">ByteTrack-style</text><text x="480" y="88" class="sub">tracker · rule-based</text></g>
           <g class="node rule"><rect x="600" y="40" width="170" height="64" rx="10"/><text x="685" y="68">Trajectories</text><text x="685" y="88" class="sub">smoothed · body-units</text></g>
           <g class="node rule"><rect x="810" y="40" width="180" height="64" rx="10"/><text x="900" y="68">Event rules</text><text x="900" y="88" class="sub">14 classes + post-proc.</text></g>
-          <g class="node data"><rect x="600" y="150" width="170" height="64" rx="10"/><text x="685" y="178">Scene layout</text><text x="685" y="198" class="sub">camera.md → scene.json</text></g>
+          <g class="node data"><rect x="600" y="150" width="170" height="64" rx="10"/><text x="685" y="178">Scene layout</text><text x="685" y="198" class="sub">drawn from frames</text></g>
           <g class="node data"><rect x="400" y="150" width="160" height="64" rx="10"/><text x="480" y="178">Learned flow field</text><text x="480" y="198" class="sub">lane directions, queues</text></g>
           <g class="node rule"><rect x="200" y="150" width="160" height="64" rx="10"/><text x="280" y="178">Pixel cues</text><text x="280" y="198" class="sub">signal · fire · static blobs</text></g>
           <g class="node out"><rect x="810" y="150" width="180" height="64" rx="10"/><text x="900" y="178">Part A events</text><text x="900" y="198" class="sub">[start, end, label]</text></g>
@@ -75,7 +75,7 @@
         <article class="card">
           <h3>1 · Detect &amp; track</h3>
           <p><b>YOLO11-m</b> (COCO, open weights) finds cars, buses, trucks, motorbikes, bicycles, people, animals and loose objects
-            at 960 px on every 2nd frame. Riders and people inside vehicles are suppressed so they never look like pedestrians.
+            at 960 px, 10 frames per second (every 3rd frame of the 30 fps 4K video). Riders and people inside vehicles are suppressed so they never look like pedestrians.
             Our own ByteTrack-style tracker (two-stage IoU matching, constant-velocity prediction, timestamps not frame counts)
             links boxes into tracks; fragments of a parked vehicle are re-joined after occlusion.</p>
         </article>
@@ -89,7 +89,7 @@
         <article class="card">
           <h3>3 · Rules → segments</h3>
           <p>Each class is a small, testable rule on trajectories plus the scene layout (stop lines, crossings, solid lines,
-            signal-head position, allowed turns) from <code>camera.md</code>. Frame flags become segments; gaps are
+            junction box) drawn by hand on a sample frame, since no <code>camera.md</code> came with the kit. Frame flags become segments; gaps are
             bridged, blips dropped and same-class overlaps merged, because boundaries are scored at IoU 0.7.</p>
         </article>
       </div>
@@ -172,15 +172,17 @@
         <h3>What worked</h3>
         <ul>
           <li><b>Body-unit speeds.</b> Dividing pixel motion by box size made one set of thresholds work across the depth of the image.</li>
-          <li><b>Learned flow field.</b> Lane directions and queue areas come from the data itself, so wrong-way and stopped-vehicle rules work even where the layout is hard to draw by hand.</li>
-          <li><b>Depth check for contact.</b> Overlapping boxes only count as contact when their ground points are at a similar depth — this removes most perspective overlaps.</li>
-          <li><b>Conservative rare classes.</b> A class we predict but that never occurs costs a full class of macro-F1, so rare classes need strong evidence.</li>
+          <li><b>Looking at every candidate.</b> With no labels, we rendered each rule's candidate events on the frame and inspected them. The first full run on the 4K sample gave 86 events for 5&frac12; minutes of ordinary traffic; the fixes below brought it to 13 plausible ones.</li>
+          <li><b>Signal-free red light.</b> The main approach's signal heads face away from the camera, so the red phase is inferred from the queue: at least two vehicles standing at the stop line for 5&nbsp;s and nothing crossing it.</li>
+          <li><b>Overlapping decode and inference.</b> 4K H.264 decoding dominates the runtime; a reader thread (Part A) and a one-sample-lag detector worker (Part B) cut the harness time from 973&nbsp;s to 549&nbsp;s on a laptop GPU (budget 1021&nbsp;s).</li>
         </ul>
-        <h3>What did not work (yet)</h3>
+        <h3>What did not work (and what we changed)</h3>
         <ul id="report-fails">
-          <li>Accidents and near misses from rules alone are brittle: occlusion and ID switches at the moment of impact break trajectories.</li>
-          <li>Smoke from colour and texture alone confuses fog, dust and exhaust; we keep it very conservative.</li>
-          <li>Image-plane time-to-collision ignores depth; vehicles in different lanes can look like they are converging.</li>
+          <li><b>fp16 on a GTX 1650 Ti returned NaN boxes</b> &mdash; our first run found zero tracks. Half precision is now disabled on GTX 16xx cards.</li>
+          <li><b>Identity switches in dense queues</b> produced fake U-turns and near misses. Stricter IoU gating, splitting tracks at physically impossible jumps and dropping boxes cut by the frame edge fixed most of them.</li>
+          <li><b>Image-plane time-to-collision</b> flags platoons, merges and opposite carriageways (perspective squeezes the median). Near misses now require crossing paths held for 0.3&nbsp;s by road users large enough to judge.</li>
+          <li><b>The learned road mask spilled onto the pavement</b> at the bus stop, turning waiting passengers into jaywalkers; we drew the carriageway by hand.</li>
+          <li><b>Accidents from rules alone are brittle.</b> On the sample (no crashes) the rule now stays silent, but we have not seen it fire on a real crash from this camera.</li>
         </ul>
         <h3>What we would do next</h3>
         <ul>
