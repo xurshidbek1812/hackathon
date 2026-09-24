@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinity Labeler</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  body { padding-bottom: 40px; }
+  .lab { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; }
+  @media (max-width: 900px) { .lab { grid-template-columns: 1fr; } }
+  video { width: 100%; background: #000; border-radius: 10px; display: block; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  select, input[type=number] { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 14px; }
+  .clock { font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; }
+  .ev { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; padding: 6px 8px; border-radius: 8px; font-size: 13px; }
+  .ev:hover { background: var(--panel-2); }
+  .ev input { width: 74px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+  .x { background: none; border: 0; color: var(--danger); cursor: pointer; font-size: 16px; }
+  kbd { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  .pending { color: var(--warn); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap" style="padding-top:24px">
+  <h2>Dev-set labeler</h2>
+  <p class="small">Open a sample video, pick a class, press <kbd>S</kbd> at the start frame and <kbd>E</kbd> at the end frame.
+    Labels for every video are kept in this browser and exported as one <code>ground_truth.json</code> for <code>evaluate.py --gt</code>.
+    <kbd>Space</kbd> play/pause · <kbd>←</kbd>/<kbd>→</kbd> ±1 frame · <kbd>Shift</kbd>+arrows ±1 s · <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>Q</kbd> <kbd>W</kbd> <kbd>R</kbd> <kbd>T</kbd> pick class.</p>
+  <div class="lab">
+    <div>
+      <div class="row">
+        <label class="btn">Open video<input type="file" id="file" accept="video/*" hidden></label>
+        <span id="name" class="small">no video</span>
+      </div>
+      <video id="video" controls muted></video>
+      <div class="row">
+        <span class="clock" id="clock">0:00.00</span>
+        <select id="rate"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>
+        <span class="small">speed</span>
+      </div>
+      <div class="row">
+        <select id="cls"></select>
+        <button class="btn" id="start">Start (S)</button>
+        <button class="btn primary" id="end">End (E)</button>
+        <span class="pending" id="pending"></span>
+      </div>
+      <div id="timeline"></div>
+    </div>
+    <div class="side" style="max-height:none">
+      <h4>Events in this video</h4>
+      <div id="list"></div>
+      <div class="row">
+        <button class="btn" id="export">Export ground_truth.json</button>
+        <label class="btn">Import<input type="file" id="import" accept=".json" hidden></label>
+      </div>
+      <p class="small" id="summary"></p>
+    </div>
+  </div>
+</div>
+<script src="../assets/charts.js"></script>
+<script>
+(() => {
+  const CLASSES = Object.keys(Charts.CLASS_INFO);
+  const KEYS = ["1","2","3","4","5","6","7","8","9","0","q","w","r","t"];
+  const STORE = "infinity-labels-v1";
+  const $ = (id) => document.getElementById(id);
+  const video = $("video");
+  let db = {};
+  try { db = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch {}
+  let current = null, pendingStart = null, fps = 25;
+
+  CLASSES.forEach((c, i) => { const o = document.createElement("option"); o.value = c; o.textContent = `${KEYS[i].toUpperCase()} · ${Charts.CLASS_INFO[c].name}`; $("cls").appendChild(o); });
+
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(db)); } catch {} render(); };
+  const round = (t) => Math.round(t * 100) / 100;
+
+  $("file").addEventListener("change", () => {
+    const f = $("file").files[0]; if (!f) return;
+    current = f.name; $("name").textContent = f.name;
+    video.src = URL.createObjectURL(f);
+    db[current] = db[current] || { duration: 0, fps, events: [] };
+    video.onloadedmetadata = () => { db[current].duration = round(video.duration); save(); };
+    render();
+  });
+  $("rate").addEventListener("change", () => video.playbackRate = +$("rate").value);
+  video.addEventListener("timeupdate", () => { $("clock").textContent = Charts.fmt(video.currentTime); });
+  setInterval(() => { $("clock").textContent = Charts.fmt(video.currentTime); }, 50);
+
+  function markStart() { if (!current) return; pendingStart = round(video.currentTime); $("pending").textContent = `start ${Charts.fmt(pendingStart)} (${$("cls").value}) — press E at the end`; }
+  function markEnd() {
+    if (!current || pendingStart === null) return;
+    const end = round(video.currentTime);
+    if (end <= pendingStart) { $("pending").textContent = "end must be after start"; return; }
+    db[current].events.push([pendingStart, end, $("cls").value]);
+    db[current].events.sort((a, b) => a[0] - b[0]);
+    pendingStart = null; $("pending").textContent = ""; save();
+  }
+  $("start").onclick = markStart; $("end").onclick = markEnd;
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    const k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+    else if (k === "arrowleft" || k === "arrowright") { e.preventDefault(); video.currentTime += (k === "arrowleft" ? -1 : 1) * (e.shiftKey ? 1 : 1 / fps); }
+    else if (k === "s") markStart();
+    else if (k === "e") markEnd();
+    else { const i = KEYS.indexOf(k); if (i >= 0) $("cls").value = CLASSES[i]; }
+  });
+
+  function render() {
+    const list = $("list"); list.innerHTML = "";
+    $("timeline").innerHTML = "";
+    if (current && db[current]) {
+      const evs = db[current].events;
+      evs.forEach((ev, i) => {
+        const row = document.createElement("div"); row.className = "ev";
+        const info = Charts.CLASS_INFO[ev[2]];
+        row.innerHTML = `<span><span class="swatch" style="background:${info.color}"></span>${info.name}</span>`;
+        const s = document.createElement("input"), en = document.createElement("input");
+        s.type = en.type = "number"; s.step = en.step = "0.04"; s.value = ev[0]; en.value = ev[1];
+        s.onchange = () => { ev[0] = +s.value; save(); }; en.onchange = () => { ev[1] = +en.value; save(); };
+        const x = document.createElement("button"); x.className = "x"; x.textContent = "×"; x.onclick = () => { evs.splice(i, 1); save(); };
+        const times = document.createElement("span"); times.append(s, " – ", en);
+        row.append(times, x);
+        row.firstChild.style.cursor = "pointer"; row.firstChild.onclick = () => video.currentTime = ev[0];
+        list.appendChild(row);
+      });
+      if (db[current].duration) Charts.timelineChart($("timeline"), evs, db[current].duration, (t) => video.currentTime = t);
+    }
+    const nv = Object.keys(db).length, ne = Object.values(db).reduce((s, v) => s + v.events.length, 0);
+    $("summary").textContent = `${nv} video(s), ${ne} event(s) labelled in this browser.`;
+  }
+
+  $("export").onclick = () => {
+    const blob = new Blob([JSON.stringify(db, null, 1)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ground_truth.json"; a.click();
+  };
+  $("import").addEventListener("change", async () => {
+    const f = $("import").files[0]; if (!f) return;
+    const data = JSON.parse(await f.text());
+    Object.assign(db, data.videos && !data.videos.events ? data.videos : data); save();
+  });
+  render();
+})();
+</script>
+</body>
+</html>

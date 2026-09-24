@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinity Scene Editor</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  .ed { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; }
+  @media (max-width: 900px) { .ed { grid-template-columns: 1fr; } }
+  canvas { width: 100%; background: #000; border-radius: 10px; display: block; cursor: crosshair; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  select, input[type=text] { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 14px; }
+  .shape { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 5px 6px; border-radius: 6px; }
+  .shape:hover { background: var(--panel-2); }
+  .shape button { margin-left: auto; background: none; border: 0; color: var(--danger); cursor: pointer; font-size: 16px; }
+  textarea { width: 100%; min-height: 160px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: 12px ui-monospace, monospace; }
+  .hint { color: var(--warn); font-size: 13px; min-height: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap" style="padding-top:24px">
+  <h2>Scene editor</h2>
+  <p class="small">Load a frame from the camera (image or video), choose what to draw, click points on the image. Polygons and polylines:
+    click the points, then <b>Enter</b> or double-click to finish. <b>Esc</b> cancels, <b>Backspace</b> removes the last point.
+    Export writes <code>configs/scene.json</code> with coordinates normalised to [0, 1].</p>
+  <div class="ed">
+    <div>
+      <div class="row">
+        <label class="btn">Open frame / video<input type="file" id="file" accept="image/*,video/*" hidden></label>
+        <select id="type"></select>
+        <input type="text" id="label" placeholder="name (zones, signals, stop lines)" style="flex:1;min-width:160px">
+      </div>
+      <p class="hint" id="hint"></p>
+      <canvas id="cv" width="1280" height="720"></canvas>
+    </div>
+    <div class="side" style="max-height:none">
+      <h4>Shapes</h4>
+      <div id="shapes"></div>
+      <h4 style="margin-top:14px">Prohibited turns (entry&gt;exit, comma separated)</h4>
+      <input type="text" id="turns" placeholder="north_in>west_out, south_in>east_out" style="width:100%">
+      <div class="row">
+        <button class="btn primary" id="export">Export scene.json</button>
+        <label class="btn">Import<input type="file" id="import" accept=".json" hidden></label>
+      </div>
+      <textarea id="json" spellcheck="false"></textarea>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  // kind: poly = polygon, line = polyline, seg = 2-point line + 2-point direction, rect = box, lane = polygon + direction
+  const TYPES = {
+    road: { kind: "poly", single: true, color: "#36c2ff", help: "carriageway outline" },
+    intersection: { kind: "poly", single: true, color: "#feca57", help: "the junction box" },
+    exclude: { kind: "poly", color: "#8395a7", help: "areas to ignore (parking bays, pavements)" },
+    crossings: { kind: "poly", color: "#1dd1a1", help: "each pedestrian crossing" },
+    carriageways: { kind: "poly", color: "#48dbfb", help: "one polygon per travel direction (for congestion)" },
+    u_turn_allowed: { kind: "poly", color: "#a55eea", help: "where U-turns are legal" },
+    zones: { kind: "poly", named: true, color: "#f368e0", help: "entry/exit zones for turn rules (give a name)" },
+    lanes: { kind: "lane", color: "#7cf0c8", help: "lane polygon, then 2 clicks for its travel direction" },
+    solid_lines: { kind: "line", color: "#ffffff", help: "solid lane markings as polylines" },
+    stop_lines: { kind: "seg", named: true, color: "#ff5a6a", help: "2 clicks for the line, 2 clicks for the approach direction; name = signal id" },
+    signals: { kind: "rect", named: true, color: "#ff9f43", help: "2 clicks: box around a lamp. Name as 'main:red', 'main:green' or 'main:head'" },
+  };
+  const $ = (id) => document.getElementById(id);
+  const cv = $("cv"), ctx = cv.getContext("2d");
+  let img = null, shapes = [], draft = [];
+  for (const [k, v] of Object.entries(TYPES)) { const o = document.createElement("option"); o.value = k; o.textContent = k; $("type").appendChild(o); }
+  const hint = () => { const t = TYPES[$("type").value]; $("hint").textContent = t.help; };
+  $("type").onchange = () => { draft = []; hint(); draw(); };
+  hint();
+
+  $("file").addEventListener("change", () => {
+    const f = $("file").files[0]; if (!f) return;
+    const url = URL.createObjectURL(f);
+    if (f.type.startsWith("video")) {
+      const v = document.createElement("video"); v.src = url; v.muted = true;
+      v.onloadeddata = () => { v.currentTime = Math.min(5, v.duration / 2); };
+      v.onseeked = () => { setImage(v, v.videoWidth, v.videoHeight); };
+    } else { const im = new Image(); im.onload = () => setImage(im, im.width, im.height); im.src = url; }
+  });
+  function setImage(src, w, h) { cv.width = w; cv.height = h; img = src; if (src.tagName === "VIDEO") { const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(src, 0, 0); img = c; } draw(); }
+
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height].map((v) => +v.toFixed(4)); };
+  const needed = (kind) => ({ seg: 4, rect: 2 })[kind];
+  cv.addEventListener("click", (e) => {
+    draft.push(pos(e));
+    const t = TYPES[$("type").value];
+    if (needed(t.kind) && draft.length === needed(t.kind)) finish();
+    else if (t.kind === "lane" && draft._closed && draft.length - draft._closed === 2) finish();
+    draw();
+  });
+  cv.addEventListener("dblclick", (e) => { e.preventDefault(); draft.pop(); finishPoly(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.key === "Enter") finishPoly();
+    else if (e.key === "Escape") { draft = []; draw(); }
+    else if (e.key === "Backspace") { draft.pop(); draw(); }
+  });
+  function finishPoly() {
+    const t = TYPES[$("type").value];
+    if (t.kind === "lane" && !draft._closed && draft.length >= 3) { draft._closed = draft.length; $("hint").textContent = "now click 2 points for the travel direction"; draw(); return; }
+    if ((t.kind === "poly" && draft.length >= 3) || (t.kind === "line" && draft.length >= 2)) finish();
+  }
+  function finish() {
+    const type = $("type").value, t = TYPES[type];
+    const name = $("label").value.trim();
+    if (t.named && !name) { $("hint").textContent = "enter a name first"; return; }
+    if (t.single) shapes = shapes.filter((s) => s.type !== type);
+    shapes.push({ type, name, pts: draft.slice(), closed: draft._closed });
+    draft = []; hint(); refresh();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (img) ctx.drawImage(img, 0, 0, cv.width, cv.height); else { ctx.fillStyle = "#111"; ctx.fillRect(0, 0, cv.width, cv.height); }
+    const lw = Math.max(2, cv.width / 500);
+    const P = (p) => [p[0] * cv.width, p[1] * cv.height];
+    const path = (pts, close, color, fill) => {
+      if (!pts.length) return;
+      ctx.beginPath(); ctx.moveTo(...P(pts[0])); for (const p of pts.slice(1)) ctx.lineTo(...P(p));
+      if (close) ctx.closePath();
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+      if (fill) { ctx.fillStyle = color + "33"; ctx.fill(); }
+    };
+    const arrow = (a, b, color) => {
+      const [x1, y1] = P(a), [x2, y2] = P(b), ang = Math.atan2(y2 - y1, x2 - x1), h = lw * 6;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      ctx.lineTo(x2 - h * Math.cos(ang - 0.4), y2 - h * Math.sin(ang - 0.4)); ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - h * Math.cos(ang + 0.4), y2 - h * Math.sin(ang + 0.4));
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.stroke();
+    };
+    const label = (p, text, color) => { ctx.font = `${lw * 7}px system-ui`; ctx.fillStyle = color; ctx.fillText(text, ...P(p)); };
+    for (const s of [...shapes, { type: $("type").value, pts: draft, closed: draft._closed, draft: true }]) {
+      const t = TYPES[s.type], c = t.color;
+      if (t.kind === "poly") path(s.pts, !s.draft, c, !s.draft);
+      else if (t.kind === "line") path(s.pts, false, c);
+      else if (t.kind === "lane") { const n = s.closed || s.pts.length; path(s.pts.slice(0, n), !!s.closed, c, !!s.closed); if (s.pts.length - n === 2) arrow(s.pts[n], s.pts[n + 1], c); }
+      else if (t.kind === "seg") { path(s.pts.slice(0, 2), false, c); if (s.pts.length === 4) arrow(s.pts[2], s.pts[3], c); }
+      else if (t.kind === "rect" && s.pts.length === 2) { const [a, b] = [P(s.pts[0]), P(s.pts[1])]; ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); }
+      for (const p of s.pts) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(...P(p), lw * 1.5, 0, 7); ctx.fill(); }
+      if (s.pts.length && !s.draft) label(s.pts[0], s.name || s.type, c);
+    }
+  }
+
+  function toScene() {
+    const scene = { road: null, exclude: [], crossings: [], lanes: [], carriageways: [], solid_lines: [], stop_lines: [],
+      intersection: null, signals: {}, zones: {}, prohibited_turns: [], u_turn_allowed: [], enabled_classes: null };
+    for (const s of shapes) {
+      const k = TYPES[s.type].kind;
+      if (s.type === "road" || s.type === "intersection") scene[s.type] = s.pts;
+      else if (s.type === "zones") scene.zones[s.name] = s.pts;
+      else if (k === "poly" || k === "line") scene[s.type].push(s.pts);
+      else if (k === "lane") { const n = s.closed; const [a, b] = s.pts.slice(n); scene.lanes.push({ name: s.name || `lane${scene.lanes.length}`, polygon: s.pts.slice(0, n), direction: [+(b[0] - a[0]).toFixed(4), +(b[1] - a[1]).toFixed(4)] }); }
+      else if (k === "seg") { const [a, b, c, d] = s.pts; scene.stop_lines.push({ name: `stop${scene.stop_lines.length}`, line: [a, b], approach: [+(d[0] - c[0]).toFixed(4), +(d[1] - c[1]).toFixed(4)], signal: s.name }); }
+      else if (k === "rect") { const [sig, lamp] = s.name.split(":"); const [a, b] = s.pts; (scene.signals[sig] = scene.signals[sig] || {})[lamp || "head"] = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]; }
+    }
+    scene.prohibited_turns = $("turns").value.split(",").map((x) => x.trim()).filter(Boolean).map((x) => x.split(">").map((y) => y.trim()));
+    return scene;
+  }
+
+  function refresh() {
+    const host = $("shapes"); host.innerHTML = "";
+    shapes.forEach((s, i) => {
+      const d = document.createElement("div"); d.className = "shape";
+      d.innerHTML = `<span class="swatch" style="background:${TYPES[s.type].color}"></span>${s.type}${s.name ? " · " + s.name : ""}<button>×</button>`;
+      d.querySelector("button").onclick = () => { shapes.splice(i, 1); refresh(); };
+      host.appendChild(d);
+    });
+    $("json").value = JSON.stringify(toScene(), null, 1);
+    draw();
+  }
+  $("turns").oninput = refresh;
+  $("export").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(toScene(), null, 1)], { type: "application/json" })); a.download = "scene.json"; a.click(); };
+  $("import").addEventListener("change", async () => {
+    const f = $("import").files[0]; if (!f) return;
+    const sc = JSON.parse(await f.text()); shapes = [];
+    if (sc.road) shapes.push({ type: "road", pts: sc.road });
+    if (sc.intersection) shapes.push({ type: "intersection", pts: sc.intersection });
+    for (const k of ["exclude", "crossings", "carriageways", "u_turn_allowed", "solid_lines"]) for (const p of sc[k] || []) shapes.push({ type: k, pts: p });
+    for (const [n, p] of Object.entries(sc.zones || {})) shapes.push({ type: "zones", name: n, pts: p });
+    for (const l of sc.lanes || []) { const c = l.polygon.reduce((a, p) => [a[0] + p[0] / l.polygon.length, a[1] + p[1] / l.polygon.length], [0, 0]); shapes.push({ type: "lanes", name: l.name, pts: [...l.polygon, c, [c[0] + l.direction[0], c[1] + l.direction[1]]], closed: l.polygon.length }); }
+    for (const s of sc.stop_lines || []) { const m = [(s.line[0][0] + s.line[1][0]) / 2, (s.line[0][1] + s.line[1][1]) / 2]; shapes.push({ type: "stop_lines", name: s.signal || "", pts: [...s.line, m, [m[0] + s.approach[0] * 0.05 / Math.hypot(...s.approach), m[1] + s.approach[1] * 0.05 / Math.hypot(...s.approach)]] }); }
+    for (const [sig, lamps] of Object.entries(sc.signals || {})) for (const [lamp, b] of Object.entries(lamps)) shapes.push({ type: "signals", name: `${sig}:${lamp}`, pts: [[b[0], b[1]], [b[2], b[3]]] });
+    $("turns").value = (sc.prohibited_turns || []).map((p) => p.join(">")).join(", ");
+    refresh();
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>

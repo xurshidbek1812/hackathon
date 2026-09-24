@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.demo_jobs/
+samples/
+*.mp4
+!website/data/videos/*.mp4
+predictions.json
+weights/*.pt.part

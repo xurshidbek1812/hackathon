@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinity · Traffic Event Detection</title>
+<meta name="description" content="Team Infinity — WIUT Hackathon 2026 Computer Vision track: traffic event detection and accident anticipation from a fixed CCTV camera.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#top"><span class="logo">∞</span> Infinity</a>
+  <button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
+  <nav>
+    <a href="#approach">Approach</a>
+    <a href="#eda">EDA</a>
+    <a href="#results">Results</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#demo" class="cta">Live demo</a>
+    <a href="#report">Report</a>
+    <a href="#team">Team</a>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">WIUT Hackathon 2026 · Computer Vision track</p>
+      <h1>Every traffic event on the road,<br>and a warning before the crash.</h1>
+      <p class="lead">A fixed CCTV camera, 14 event classes, no labels. We detect and track every road user,
+        turn trajectories into events with scene-aware rules, and score accident risk frame by frame
+        using only the past.</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#demo">Try it on your video</a>
+        <a class="btn" href="#approach">How it works</a>
+      </div>
+      <div class="kpis" id="kpis"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ APPROACH -->
+  <section id="approach">
+    <div class="wrap">
+      <h2>Problem &amp; approach</h2>
+      <p class="section-lead">Part A returns every event as <code>[start_sec, end_sec, label]</code>, matched at temporal
+        IoU 0.3 / 0.5 / 0.7. Part B returns, at every frame, the probability that an accident starts within 5 s — using only frames already seen.</p>
+      <div class="diagram-wrap">
+        <svg class="diagram" viewBox="0 0 1000 330" role="img" aria-label="Pipeline diagram">
+          <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+          <g class="node learned"><rect x="10" y="40" width="150" height="64" rx="10"/><text x="85" y="68">Video frames</text><text x="85" y="88" class="sub">every 2nd frame</text></g>
+          <g class="node learned"><rect x="200" y="40" width="160" height="64" rx="10"/><text x="280" y="68">YOLO11 detector</text><text x="280" y="88" class="sub">COCO · learned</text></g>
+          <g class="node rule"><rect x="400" y="40" width="160" height="64" rx="10"/><text x="480" y="68">ByteTrack-style</text><text x="480" y="88" class="sub">tracker · rule-based</text></g>
+          <g class="node rule"><rect x="600" y="40" width="170" height="64" rx="10"/><text x="685" y="68">Trajectories</text><text x="685" y="88" class="sub">smoothed · body-units</text></g>
+          <g class="node rule"><rect x="810" y="40" width="180" height="64" rx="10"/><text x="900" y="68">Event rules</text><text x="900" y="88" class="sub">14 classes + post-proc.</text></g>
+          <g class="node data"><rect x="600" y="150" width="170" height="64" rx="10"/><text x="685" y="178">Scene layout</text><text x="685" y="198" class="sub">camera.md → scene.json</text></g>
+          <g class="node data"><rect x="400" y="150" width="160" height="64" rx="10"/><text x="480" y="178">Learned flow field</text><text x="480" y="198" class="sub">lane directions, queues</text></g>
+          <g class="node rule"><rect x="200" y="150" width="160" height="64" rx="10"/><text x="280" y="178">Pixel cues</text><text x="280" y="198" class="sub">signal · fire · static blobs</text></g>
+          <g class="node out"><rect x="810" y="150" width="180" height="64" rx="10"/><text x="900" y="178">Part A events</text><text x="900" y="198" class="sub">[start, end, label]</text></g>
+          <g class="node rule"><rect x="400" y="250" width="370" height="64" rx="10"/><text x="585" y="278">Causal risk model (own tracker, past frames only)</text><text x="585" y="298" class="sub">TTC · hard braking · swerve · wrong-way · pedestrian on road</text></g>
+          <g class="node out"><rect x="810" y="250" width="180" height="64" rx="10"/><text x="900" y="278">Part B risk</text><text x="900" y="298" class="sub">P(accident in 5 s)</text></g>
+          <path d="M160 72 H198" marker-end="url(#arr)"/><path d="M360 72 H398" marker-end="url(#arr)"/>
+          <path d="M560 72 H598" marker-end="url(#arr)"/><path d="M770 72 H808" marker-end="url(#arr)"/>
+          <path d="M770 182 H790 V110 H830" marker-end="url(#arr)"/>
+          <path d="M560 182 H598" marker-end="url(#arr)"/>
+          <path d="M280 104 V148" marker-end="url(#arr)"/>
+          <path d="M360 182 H380 V120 H820" marker-end="url(#arr)" class="faint"/>
+          <path d="M900 104 V148" marker-end="url(#arr)"/>
+          <path d="M85 104 V282 H398" marker-end="url(#arr)"/>
+          <path d="M770 282 H808" marker-end="url(#arr)"/>
+        </svg>
+        <div class="legend"><span class="lg learned">learned model</span><span class="lg rule">hand-written logic</span><span class="lg data">scene knowledge</span><span class="lg out">output</span></div>
+      </div>
+
+      <div class="cards three">
+        <article class="card">
+          <h3>1 · Detect &amp; track</h3>
+          <p><b>YOLO11-m</b> (COCO, open weights) finds cars, buses, trucks, motorbikes, bicycles, people, animals and loose objects
+            at 960 px on every 2nd frame. Riders and people inside vehicles are suppressed so they never look like pedestrians.
+            Our own ByteTrack-style tracker (two-stage IoU matching, constant-velocity prediction, timestamps not frame counts)
+            links boxes into tracks; fragments of a parked vehicle are re-joined after occlusion.</p>
+        </article>
+        <article class="card">
+          <h3>2 · Trajectories in body units</h3>
+          <p>We take the bottom-centre of each box as its ground point, smooth it, and measure speed in
+            <em>body units per second</em> (pixels ÷ √(w·h)). Far and near cars get comparable thresholds without camera
+            calibration. A <b>flow field</b> learned from the sample videos gives each road cell its usual driving
+            direction and marks where vehicles routinely queue.</p>
+        </article>
+        <article class="card">
+          <h3>3 · Rules → segments</h3>
+          <p>Each class is a small, testable rule on trajectories plus the scene layout (stop lines, crossings, solid lines,
+            signal-head position, allowed turns) from <code>camera.md</code>. Frame flags become segments; gaps are
+            bridged, blips dropped and same-class overlaps merged, because boundaries are scored at IoU 0.7.</p>
+        </article>
+      </div>
+
+      <h3 class="mt">What each class means to the system</h3>
+      <div class="table-wrap">
+        <table class="rules">
+          <thead><tr><th>Class</th><th>Signal we use</th><th>Start → end</th><th>Type</th></tr></thead>
+          <tbody id="rules-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ EDA -->
+  <section id="eda" class="alt">
+    <div class="wrap">
+      <h2>EDA of the sample videos</h2>
+      <p class="section-lead">What the camera sees: resolution, frame rate, lighting, how many road users of each kind,
+        where they drive and in which direction. These findings set the detector size, the frame stride, and the rules.</p>
+      <div id="eda-content"><p class="placeholder">EDA appears here after running <code>scripts/analyze_videos.py</code> and <code>scripts/eda.py</code> on the sample videos.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ RESULTS -->
+  <section id="results">
+    <div class="wrap">
+      <h2>Results on the sample videos</h2>
+      <p class="section-lead">Annotated playback rendered with our own tooling. Click any event on the timeline to jump to it.</p>
+      <div id="results-content"><p class="placeholder">Results appear here after the sample videos are processed.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ DASHBOARD -->
+  <section id="dashboard" class="alt">
+    <div class="wrap">
+      <h2>Operator dashboard</h2>
+      <p class="section-lead">The view a traffic centre would want: events per class, per hour of footage, and when they happen.</p>
+      <div id="dashboard-content"><p class="placeholder">Dashboard appears when results are available.</p></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ DEMO -->
+  <section id="demo">
+    <div class="wrap">
+      <h2>Live demo</h2>
+      <p class="section-lead">Upload an <b>.mp4 up to 2 minutes and 200 MB</b> from this camera (or any road camera).
+        The same code as our submission runs on CPU; expect roughly 1–3× the clip length.</p>
+      <form id="upload-form" class="upload">
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="video/mp4" hidden>
+          <span class="drop-icon">⬆</span>
+          <span id="drop-text">Drop an .mp4 here or <u>choose a file</u></span>
+        </label>
+        <button class="btn primary" id="upload-btn" type="submit" disabled>Analyse video</button>
+      </form>
+      <div id="demo-status" class="status" hidden>
+        <div class="bar"><div id="demo-bar"></div></div>
+        <p id="demo-msg">Uploading…</p>
+      </div>
+      <p id="demo-offline" class="notice" hidden>The demo backend is offline right now. Run it locally with
+        <code>uvicorn demo.server:app --port 7860</code> and open <code>http://localhost:7860</code>.</p>
+      <div id="demo-result"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ REPORT -->
+  <section id="report" class="alt">
+    <div class="wrap narrow">
+      <h2>Technical report</h2>
+      <div class="report">
+        <h3>What we built</h3>
+        <p>A single-pass pipeline: YOLO11 detection on every second frame, our own ByteTrack-style tracker, smoothed
+          trajectories measured in body units, and one small rule per event class that combines trajectories with the
+          fixed scene layout. Classes a COCO detector cannot see get pixel cues: signal state from the signal-head
+          region, static foreground blobs against a median background (debris), and flickering fire-coloured regions
+          (fire), grey growing low-texture regions (smoke). Part B runs its own causal tracker and combines
+          time-to-collision, hard braking, swerving, wrong-way motion and pedestrians on the road into a logistic risk
+          score with fast rise and slow decay.</p>
+        <h3>What worked</h3>
+        <ul>
+          <li><b>Body-unit speeds.</b> Dividing pixel motion by box size made one set of thresholds work across the depth of the image.</li>
+          <li><b>Learned flow field.</b> Lane directions and queue areas come from the data itself, so wrong-way and stopped-vehicle rules work even where the layout is hard to draw by hand.</li>
+          <li><b>Depth check for contact.</b> Overlapping boxes only count as contact when their ground points are at a similar depth — this removes most perspective overlaps.</li>
+          <li><b>Conservative rare classes.</b> A class we predict but that never occurs costs a full class of macro-F1, so rare classes need strong evidence.</li>
+        </ul>
+        <h3>What did not work (yet)</h3>
+        <ul id="report-fails">
+          <li>Accidents and near misses from rules alone are brittle: occlusion and ID switches at the moment of impact break trajectories.</li>
+          <li>Smoke from colour and texture alone confuses fog, dust and exhaust; we keep it very conservative.</li>
+          <li>Image-plane time-to-collision ignores depth; vehicles in different lanes can look like they are converging.</li>
+        </ul>
+        <h3>What we would do next</h3>
+        <ul>
+          <li>Fine-tune a video classifier (e.g. VideoMAE) on CCD / DoTA to re-score accident and near-miss candidates.</li>
+          <li>Estimate a ground-plane homography from lane markings to get metric speeds and true time-to-collision.</li>
+          <li>Fit the Part B weights with logistic regression on our own dev labels instead of hand-set weights.</li>
+        </ul>
+        <h3>Reproducibility</h3>
+        <p>Fixed seeds, deterministic tracker and rules, no internet at inference, weights in the repository. Frame skipping
+          only kicks in as an emergency if a machine runs at more than twice the time budget.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ TEAM -->
+  <section id="team">
+    <div class="wrap">
+      <h2>Team Infinity</h2>
+      <div class="cards three" id="team-cards"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ LINKS -->
+  <section id="links" class="alt">
+    <div class="wrap">
+      <h2>Links</h2>
+      <div class="links">
+        <a class="link-card" href="https://github.com/xurshidbek1812/hackathon" target="_blank" rel="noopener"><b>Repository</b><span>github.com/xurshidbek1812/hackathon</span></a>
+        <a class="link-card" href="https://github.com/xurshidbek1812/hackathon/tree/main/weights" target="_blank" rel="noopener"><b>Weights</b><span>YOLO11-m (COCO) · weights/</span></a>
+        <a class="link-card" href="https://github.com/xurshidbek1812/hackathon/blob/main/predictions_samples.json" target="_blank" rel="noopener"><b>predictions_samples.json</b><span>our output on the sample videos</span></a>
+        <a class="link-card" href="tools/labeler.html"><b>Labeling tool</b><span>build a dev set in the browser</span></a>
+        <a class="link-card" href="tools/scene_editor.html"><b>Scene editor</b><span>draw lanes, stop lines, crossings</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">Team Infinity · WIUT Hackathon 2026 · Computer Vision track</div></footer>
+
+<script src="config.js"></script>
+<script src="assets/charts.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

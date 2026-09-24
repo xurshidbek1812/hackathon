@@ -1,0 +1,16 @@
+{
+  "_doc": "Scene layout for the competition camera. Coordinates are normalised [x, y] in [0, 1]. Draw them with website/tools/scene_editor.html on a frame from samples/. null or missing = unknown, and the rules that need it are switched off. Fill this from samples/camera.md.",
+  "road": null,
+  "exclude": [],
+  "crossings": null,
+  "lanes": [],
+  "carriageways": [],
+  "solid_lines": [],
+  "stop_lines": [],
+  "intersection": null,
+  "signals": {},
+  "zones": {},
+  "prohibited_turns": [],
+  "u_turn_allowed": [],
+  "enabled_classes": null
+}
