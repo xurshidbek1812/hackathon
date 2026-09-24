@@ -77,28 +77,55 @@ class Track:
 class TrackStore:
     """Accumulates tracker output during the pass; builds Track objects at the end."""
 
-    def __init__(self, motion: MotionParams = MotionParams(), tracker: TrackerParams = TrackerParams()):
+    def __init__(self, motion: MotionParams = MotionParams(), tracker: TrackerParams = TrackerParams(),
+                 frame_size: tuple[int, int] | None = None):
         self.motion = motion
         self.tracker = tracker
+        self.frame_size = frame_size
         self._obs: dict[int, list] = defaultdict(list)
         self._meta: dict[int, tuple[int, int, int]] = {}   # id -> (category, coco_cls, max hits)
 
     def add(self, t: float, tracked) -> None:
         for tid, box, cat, coco, score, hits in tracked:
-            self._obs[tid].append((t, *box))
             _, _, h = self._meta.get(tid, (cat, coco, 0))
             self._meta[tid] = (cat, coco, max(h, hits))
+            if not self._at_border(box):   # a box cut by the frame edge has a false ground point
+                self._obs[tid].append((t, *box))
+
+    def _at_border(self, box, margin: float = 0.004) -> bool:
+        if self.frame_size is None:
+            return False
+        w, h = self.frame_size
+        return box[0] <= margin * w or box[1] <= margin * h or box[2] >= (1 - margin) * w or box[3] >= (1 - margin) * h
 
     def build(self) -> list[Track]:
         tracks = []
+        next_id = max(self._obs, default=0) + 1
         for tid, obs in self._obs.items():
             cat, coco, hits = self._meta[tid]
-            if hits < self.tracker.min_hits or len(obs) < self.motion.min_track_samples:
+            if hits < self.tracker.min_hits:
                 continue
             arr = np.asarray(obs, np.float64)
-            t, raw = arr[:, 0], arr[:, 1:5]
-            tracks.append(Track(tid, cat, coco, t, moving_average(raw, t, self.motion.smooth_sec), raw))
+            for k, part in enumerate(split_at_teleports(arr, self.tracker.teleport_speed)):
+                if len(part) < self.motion.min_track_samples:
+                    continue
+                t, raw = part[:, 0], part[:, 1:5]
+                pid = tid if k == 0 else next_id
+                next_id += k > 0
+                tracks.append(Track(pid, cat, coco, t, moving_average(raw, t, self.motion.smooth_sec), raw))
         return link_stationary_fragments(tracks, self.tracker, self.motion)
+
+
+def split_at_teleports(obs: np.ndarray, max_speed: float) -> list[np.ndarray]:
+    """Cut a raw track (rows t, x1, y1, x2, y2) where the ground point moves
+    faster than `max_speed` body units/s: the tracker swapped identities."""
+    b = obs[:, 1:5]
+    ground = np.column_stack([(b[:, 0] + b[:, 2]) / 2, b[:, 3]])
+    size = np.sqrt(np.clip(b[:, 2] - b[:, 0], 1, None) * np.clip(b[:, 3] - b[:, 1], 1, None))
+    step = np.linalg.norm(np.diff(ground, axis=0), axis=1) / size[1:]
+    dt = np.maximum(np.diff(obs[:, 0]), 1e-3)
+    cuts = np.flatnonzero(step / dt > max_speed) + 1
+    return np.split(obs, cuts)
 
 
 def link_stationary_fragments(tracks: list[Track], tp: TrackerParams, mp: MotionParams) -> list[Track]:

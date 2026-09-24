@@ -25,11 +25,12 @@ class DetectorParams:
 class TrackerParams:
     high_conf: float = 0.45
     low_conf: float = 0.15
-    iou_gate: float = 0.15
+    iou_gate: float = 0.3
     max_lost_sec: float = 1.5
     min_hits: int = 3
-    stationary_link_gap_sec: float = 30.0   # re-join fragments of a parked vehicle
-    stationary_link_iou: float = 0.5
+    stationary_link_gap_sec: float = 8.0    # re-join fragments of a parked vehicle
+    stationary_link_iou: float = 0.7
+    teleport_speed: float = 8.0             # body units / s; faster = identity switch, split the track
 
 
 @dataclass(frozen=True)
@@ -58,19 +59,20 @@ class RuleParams:
     wrong_way_min_dist: float = 2.0         # body units travelled against the flow
     # u-turn / turns
     u_turn_min_deg: float = 150.0
-    u_turn_max_sec: float = 20.0
+    u_turn_max_sec: float = 12.0
     turn_min_deg: float = 45.0
     # line crossings
     line_cross_hold_sec: float = 0.8
     # pedestrians
-    jaywalk_min_sec: float = 1.0
-    road_margin: float = 0.15               # fraction of person height inside the road edge
-    crossing_margin_px: float = 12.0
+    jaywalk_min_sec: float = 2.0
+    road_margin: float = 0.5                # person heights inside the road edge
+    crossing_margin: float = 0.6            # person heights around a crossing still count as on it
     # collisions
     contact_depth_tol: float = 0.35         # |y2a - y2b| / min(h)
     hard_decel: float = 2.0                 # body units / s lost within ~1 s
     swerve_deg: float = 30.0
     near_miss_ttc: float = 1.2
+    collision_min_scale: float = 0.025      # min sqrt(w*h) / frame height to judge contact
     after_contact_slow_sec: float = 2.0
     # obstacles / fire
     obstacle_min_sec: float = 2.0
@@ -88,8 +90,8 @@ class RuleParams:
 
 @dataclass(frozen=True)
 class PipelineParams:
-    stride: int = 2                         # process every Nth frame in Part A
-    max_stride: int = 5
+    sample_hz: float = 10.0                 # frames per second of video processed in Part A
+    max_stride: int = 8
     budget_ratio_part_a: float = 1.2        # target wall time / video time for Part A
     feature_every_sec: float = 0.5          # background / fire sampling period
     feature_width: int = 320
@@ -101,8 +103,8 @@ class PipelineParams:
 
 @dataclass(frozen=True)
 class RiskParams:
-    stride: int = 2
-    max_stride: int = 6
+    sample_hz: float = 10.0                 # frames per second the risk model looks at
+    max_stride: int = 10
     imgsz: int = 640
     budget_ratio: float = 1.0               # target wall time / video time for Part B
     history_sec: float = 2.0

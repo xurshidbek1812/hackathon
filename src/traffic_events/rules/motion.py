@@ -99,6 +99,9 @@ def wrong_way(ctx: Context) -> list[Event]:
         else:
             exp = ctx.flow.expected_direction(tr.anchor)
         known = moving & ~np.isnan(exp[:, 0])
+        if ctx.scene.intersection is not None:
+            # many movements share the junction box: travel direction is only defined on road links
+            known &= ~ctx.scene.inside(ctx.scene.intersection, tr.anchor)
         cos = np.einsum("ij,ij->i", tr.unit_dir(), np.nan_to_num(exp))
         against = known & (cos < rp.wrong_way_cos)
         for s, e in mask_to_segments(tr.t, against, min_dur=rp.wrong_way_min_sec, max_gap=1.0):
@@ -131,7 +134,7 @@ def illegal_u_turn(ctx: Context) -> list[Event]:
             if len(ok):
                 found = (idx[lo + ok[-1]], idx[j])
                 break
-        if found is None:
+        if found is None or not _is_u_shape(tr, *found):
             continue
         # the turn may keep going past the 150 deg mark: look 2 s further for it to settle
         i_end = min(len(tr.t) - 1, int(np.searchsorted(tr.t, tr.t[found[1]] + 2.0)))
@@ -141,6 +144,28 @@ def illegal_u_turn(ctx: Context) -> list[Event]:
             continue
         events.append(Event(start, end, "illegal_u_turn", 0.7, [tr.id]))
     return events
+
+
+def _is_u_shape(tr, i0: int, i1: int, leg_sec: float = 1.5, max_gap: float = 5.0) -> bool:
+    """A U-turn drives away on a leg parallel and close to the leg it came in on.
+    Big junction turns and identity switches reverse the heading too, but their
+    legs are far apart or not opposite."""
+    before = (tr.t >= tr.t[i0] - leg_sec) & (tr.t <= tr.t[i0]) & (tr.speed > 0.8)
+    after = (tr.t >= tr.t[i1]) & (tr.t <= tr.t[i1] + leg_sec) & (tr.speed > 0.8)
+    if before.sum() < 3 or after.sum() < 3:
+        return False          # a crawling or parked vehicle's jitter also flips its heading
+    turn = (tr.t >= tr.t[i0]) & (tr.t <= tr.t[i1])
+    if np.diff(tr.t[turn]).max(initial=0.0) > 0.4:
+        return False          # identity switches happen where the tracker lost the vehicle
+    d_in = tr.unit_dir()[before].mean(axis=0)
+    d_out = tr.unit_dir()[after].mean(axis=0)
+    n_in, n_out = np.linalg.norm(d_in), np.linalg.norm(d_out)
+    if n_in < 0.5 or n_out < 0.5 or (d_in @ d_out) / (n_in * n_out) > -0.8:
+        return False
+    d_in /= n_in
+    offset = tr.anchor[after].mean(axis=0) - tr.anchor[before].mean(axis=0)
+    lateral = abs(offset[0] * d_in[1] - offset[1] * d_in[0])
+    return lateral / float(np.median(tr.scale[before | after])) <= max_gap
 
 
 def illegal_turn(ctx: Context) -> list[Event]:

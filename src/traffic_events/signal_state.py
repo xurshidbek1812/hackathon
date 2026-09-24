@@ -64,8 +64,10 @@ class SignalTimeline:
 
 
 class SignalMonitor:
-    def __init__(self, signals: dict[str, dict[str, np.ndarray]]):
-        self.signals = signals
+    def __init__(self, signals: dict[str, dict[str, np.ndarray]], scale: float = 1.0):
+        """`signals` boxes are in video pixels; frames arrive downscaled by `scale`."""
+        self.signals = {name: {lamp: box / scale for lamp, box in lamps.items()}
+                        for name, lamps in signals.items()}
         self._t: list[float] = []
         self._raw: dict[str, list[int]] = {k: [] for k in signals}
 

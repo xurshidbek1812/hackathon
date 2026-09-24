@@ -14,18 +14,21 @@ from itertools import combinations
 
 import numpy as np
 
-from ..detector import PERSON
+from ..detector import OBSTACLE, PERSON
 from ..segments import Event
 from ..tracks import Track
 from .common import Context, body_distance, common_times, runs
 
 
-def _extent(tr: Track) -> np.ndarray:
-    return np.array([tr.box[:, 0].min(), tr.box[:, 1].min(), tr.box[:, 2].max(), tr.box[:, 3].max()])
+def _extent(tr: Track, pad_bodies: float) -> np.ndarray:
+    pad = pad_bodies * float(tr.scale.max())
+    return np.array([tr.box[:, 0].min() - pad, tr.box[:, 1].min() - pad,
+                     tr.box[:, 2].max() + pad, tr.box[:, 3].max() + pad])
 
 
-def _candidate_pairs(tracks: list[Track]):
-    ext = {tr.id: _extent(tr) for tr in tracks}
+def _candidate_pairs(tracks: list[Track], pad_bodies: float = 0.0):
+    """Pairs that coexist in time and whose (padded) image footprints meet."""
+    ext = {tr.id: _extent(tr, pad_bodies) for tr in tracks}
     for a, b in combinations(tracks, 2):
         if a.category == PERSON and b.category == PERSON:
             continue
@@ -107,9 +110,16 @@ def _settle_time(ctx: Context, tr: Track, t0: float) -> float:
     return ctx.track_end(tr)
 
 
+def _judgeable_users(ctx: Context) -> list[Track]:
+    """Road users large enough in the image to judge contact: far-away boxes
+    overlap from perspective alone and their motion is mostly noise."""
+    min_scale = ctx.rp.collision_min_scale * ctx.meta.height
+    return [t for t in ctx.tracks if t.category != OBSTACLE and np.median(t.scale) >= min_scale]
+
+
 def accident(ctx: Context) -> list[Event]:
     rp = ctx.rp
-    users = [t for t in ctx.tracks if t.category != 3]
+    users = _judgeable_users(ctx)
     events = []
     for a, b in _candidate_pairs(users):
         ia, ib = common_times(a, b)
@@ -128,12 +138,15 @@ def accident(ctx: Context) -> list[Event]:
             fall = fell(a, tc) or fell(b, tc)
             stay = t[i1] - t[i0] >= rp.after_contact_slow_sec and (
                 (a.speed[ia[i0:i1 + 1]] < 0.3).mean() > 0.6 or (b.speed[ib[i0:i1 + 1]] < 0.3).mean() > 0.6)
+            ped = PERSON in (a.category, b.category)
+            vehicle = b if a.category == PERSON else a
+            if ped and vehicle.speed[vehicle.at(tc)] < 1.0:
+                continue                      # people walk past or board standing vehicles
+            abrupt = drop >= rp.hard_decel or turn >= rp.swerve_deg or fall
+            if closing < 1.0 or not abrupt or not (stay or fall):
+                continue                      # queues overlap but never close fast; crashes end at rest
             evidence = (0.35 * min(closing / 1.5, 1.0) + 0.3 * min(drop / rp.hard_decel, 1.0)
                         + 0.15 * min(turn / rp.swerve_deg, 1.0) + 0.25 * stay + 0.4 * fall)
-            if closing < 0.8 and not fall:
-                continue                      # bumper-to-bumper queues overlap but never close fast
-            if evidence < 0.6:
-                continue
             end = min(max(_settle_time(ctx, a, tc), _settle_time(ctx, b, tc)), tc + 60.0)
             events.append(Event(tc, max(end, tc + 1.0), "accident", min(1.0, evidence), [a.id, b.id]))
             break
@@ -142,7 +155,7 @@ def accident(ctx: Context) -> list[Event]:
 
 def _evasion_onset(tr: Track, tk: float, rp) -> float | None:
     """Start of hard braking (last moment at ~full speed) or of a swerve near tk."""
-    if speed_drop(tr, tk + 0.5, before=1.0, after=1.5) >= rp.hard_decel * 0.75:
+    if speed_drop(tr, tk + 0.5, before=1.0, after=1.5) >= rp.hard_decel:
         w = np.flatnonzero(_window(tr, tk - 1.5, tk + 1.0))
         sp = tr.speed[w]
         return float(tr.t[w[np.flatnonzero(sp >= 0.9 * sp.max())[-1]]])
@@ -153,10 +166,10 @@ def _evasion_onset(tr: Track, tk: float, rp) -> float | None:
 
 def near_miss(ctx: Context, accidents: list[Event] | None = None) -> list[Event]:
     rp = ctx.rp
-    users = [t for t in ctx.tracks if t.category != 3]
+    users = _judgeable_users(ctx)
     crash_pairs = {tuple(sorted(e.track_ids)) for e in accidents or []}
     events = []
-    for a, b in _candidate_pairs(users):
+    for a, b in _candidate_pairs(users, pad_bodies=2.0):
         if tuple(sorted((a.id, b.id))) in crash_pairs:
             continue
         ia, ib = common_times(a, b)
@@ -166,10 +179,21 @@ def near_miss(ctx: Context, accidents: list[Event] | None = None) -> list[Event]
             continue
         ttc, miss = time_to_collision(a, ia, b, ib)
         dist = body_distance(a, ia, b, ib)
-        danger = (ttc > 0) & (ttc < rp.near_miss_ttc) & (miss < 1.0) & (dist < 4.0)
-        if not danger.any():
+        # crossing paths only (both moving, headings well apart): following a car or
+        # rolling up to a queue closes the gap too, and opposite carriageways look
+        # like a head-on course once perspective squeezes the median
+        moving = (a.speed[ia] > 1.0) & (b.speed[ib] > 1.0)
+        cos = np.einsum("ij,ij->i", a.unit_dir()[ia], b.unit_dir()[ib])
+        # vehicle-vehicle conflicts cross at a wide angle (narrower ones are lane changes/merges)
+        min_angle = 30 if PERSON in (a.category, b.category) else 45
+        crossing = moving & (np.abs(cos) < np.cos(np.deg2rad(min_angle)))
+        big = np.minimum(a.scale[ia], b.scale[ib]) >= rp.collision_min_scale * ctx.meta.height
+        danger = crossing & big & (ttc > 0) & (ttc < rp.near_miss_ttc) & (miss < 0.6) & (dist < 8.0)
+        # a real conflict lasts; single samples are heading noise in dense, slow traffic
+        sustained = [(i0, i1) for i0, i1 in runs(danger) if i1 - i0 + 1 >= 3]
+        if not sustained:
             continue
-        k = int(np.flatnonzero(danger)[0])
+        k = int(sustained[0][0])
         tk = float(a.t[ia[k]])
         # evasive action by either road user around the dangerous moment
         onsets = [_evasion_onset(tr, tk, rp) for tr in (a, b)]
@@ -177,8 +201,12 @@ def near_miss(ctx: Context, accidents: list[Event] | None = None) -> list[Event]
         if not onsets:
             continue
         onset = min(onsets)
-        clear = np.flatnonzero((a.t[ia] > tk) & (dist > 2.0))
-        end = float(a.t[ia[clear[0]]]) if len(clear) else min(a.end, b.end)
+        # clear = separated again after the closest approach
+        t_common = a.t[ia]
+        horizon = np.flatnonzero((t_common >= tk) & (t_common <= tk + 6.0))
+        k_min = horizon[int(np.argmin(dist[horizon]))]
+        clear = np.flatnonzero((np.arange(len(dist)) > k_min) & (dist > 2.0))
+        end = float(t_common[clear[0]]) if len(clear) else min(a.end, b.end)
         end = min(end, tk + 6.0)
         if end - onset >= 0.5:
             events.append(Event(onset, end, "near_miss", 0.6, [a.id, b.id]))

@@ -54,16 +54,16 @@ def test_finalize_unions_same_class_and_clips():
 
 def test_metric_perfect_prediction_scores_one():
     gt = {"v.mp4": {"duration": 60, "fps": 25, "events": [[10, 15, "accident"], [30, 40, "red_light"]]}}
-    risk = [[t, 1.0 if 7 <= t < 10 else 0.0] for t in np.arange(0, 60, 0.04)]
-    pred = {"videos": {"v.mp4": {"events": gt["v.mp4"]["events"], "risk": risk}}}
-    a, _ = evaluate.score_a(pred, gt)
-    b, parts = evaluate.score_b(pred, gt)
-    assert a == 1.0
-    assert parts["AP"] > 0.99 and parts["F1_alarm"] == 1.0 and abs(parts["mTTA"] - 3.0) < 0.05
+    risk = [[t, 1.0 if 5 <= t < 10 else 0.0] for t in np.arange(0, 60, 0.04)]
+    pred = {"team": "t", "videos": {"v.mp4": {"events": gt["v.mp4"]["events"], "risk": risk}}}
+    rep = evaluate.evaluate(gt, pred)
+    assert rep["part_a"]["score_a"] == 1.0
+    b = rep["part_b"]
+    assert b["ap"] > 0.99 and b["f1_alarm"] == 1.0 and abs(b["mtta_sec"] - 5.0) < 0.05
 
 
 def test_metric_false_class_is_penalised():
-    gt = {"v.mp4": {"events": [[10, 15, "accident"]]}}
-    pred = {"videos": {"v.mp4": {"events": [[10, 15, "accident"], [20, 25, "fire_smoke"]], "risk": []}}}
-    a, table = evaluate.score_a(pred, gt)
-    assert a == 0.5 and table["fire_smoke"] == [0.0, 0.0, 0.0]
+    gt = {"v.mp4": {"duration": 60, "events": [[10, 15, "accident"]]}}
+    pred = {"team": "t", "videos": {"v.mp4": {"events": [[10, 15, "accident"], [20, 25, "fire_smoke"]], "risk": []}}}
+    a = evaluate.evaluate_part_a(gt, pred["videos"])
+    assert a["score_a"] == 0.5 and a["per_class"]["fire_smoke"]["f1_mean"] == 0.0

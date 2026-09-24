@@ -145,3 +145,44 @@ def test_near_miss_with_hard_braking():
     crosser = person_track(2, line_path((830, 250), (830, 700), n(4)), t0=0.48)
     evs = near_miss(make_context([make_track(1, brake), crosser]))
     assert len(evs) == 1
+
+
+def _unsignalled_scene():
+    scene = Scene(W, H)
+    scene.stop_lines = [StopLine("s", np.array([[600, 300], [600, 600]], np.float32),
+                                 np.array([1.0, 0.0], np.float32), None)]
+    return scene
+
+
+def _waiting_car(tid, y, until_sec):
+    return make_track(tid, np.concatenate([line_path((300, y), (565, y), n(3)),
+                                           np.repeat([[565, y]], n(until_sec - 3), axis=0)]))
+
+
+def test_red_light_inferred_from_waiting_queue():
+    scene = _unsignalled_scene()
+    waiting = [_waiting_car(1, 350, 25), _waiting_car(4, 420, 25)]
+    runner = make_track(2, line_path((200, 520), (1100, 520), n(6)), t0=10.0)
+    later = make_track(3, line_path((200, 520), (1100, 520), n(6)), t0=40.0)   # nobody waiting: green
+    evs = red_light(make_context(waiting + [runner, later], scene=scene, duration=60))
+    assert [e.track_ids for e in evs] == [[2]]
+
+
+def test_platoon_through_a_waiting_turn_lane_is_not_red_light():
+    scene = _unsignalled_scene()
+    waiting = [_waiting_car(1, 350, 40), _waiting_car(4, 420, 40)]           # e.g. a turn lane on red
+    platoon = [make_track(10 + i, line_path((200, 520), (1100, 520), n(6)), t0=10.0 + 1.5 * i) for i in range(5)]
+    assert red_light(make_context(waiting + platoon, scene=scene, duration=60)) == []
+
+
+def test_stop_line_with_inferred_phase_ends_when_queue_moves():
+    scene = _unsignalled_scene()
+    waiting = [make_track(tid, np.concatenate([line_path((300, y), (565, y), n(3)),
+                                               np.repeat([[565, y]], n(20), axis=0),
+                                               line_path((565, y), (1100, y), n(3))]))
+               for tid, y in ((1, 350), (3, 420))]
+    over = make_track(2, np.concatenate([line_path((300, 520), (610, 520), n(4)),
+                                         np.repeat([[610, 520]], n(19), axis=0),
+                                         line_path((610, 520), (1100, 520), n(3))]))
+    evs = stop_line(make_context(waiting + [over], scene=scene, duration=60))
+    assert len(evs) == 1 and evs[0].track_ids == [2] and abs(evs[0].end - 23.0) < 0.5

@@ -1,6 +1,8 @@
-"""Sequential video reading with frame skipping."""
+"""Video reading: frame skipping, downscaling, and decode-ahead in a thread."""
 from __future__ import annotations
 
+import queue
+import threading
 from dataclasses import dataclass
 from typing import Iterator
 
@@ -32,26 +34,55 @@ def read_meta(path: str) -> VideoMeta:
     return meta
 
 
-def iter_frames(path: str, stride_fn) -> Iterator[tuple[int, float, np.ndarray]]:
+def resize_to_width(frame: np.ndarray, width: int | None) -> np.ndarray:
+    if not width or frame.shape[1] <= width:
+        return frame
+    h = int(round(frame.shape[0] * width / frame.shape[1]))
+    return cv2.resize(frame, (width, h), interpolation=cv2.INTER_AREA)
+
+
+def iter_frames(path: str, stride_fn, width: int | None = None,
+                prefetch: int = 32) -> Iterator[tuple[int, float, np.ndarray]]:
     """Yield (frame_index, t_sec, bgr_frame) for every `stride_fn()`-th frame.
 
-    `stride_fn` is re-evaluated after every yielded frame, which lets the caller
-    raise the stride on the fly when it is running behind its time budget.
-    Skipped frames are only grabbed (demuxed/decoded), never converted.
+    Decoding (the bottleneck for 4K H.264) and downscaling to `width` run in a
+    background thread, so they overlap with inference in the caller.
+    `stride_fn` is re-evaluated after every frame, which lets the caller raise
+    the stride when it is running behind its time budget. Skipped frames are
+    only grabbed, never converted.
     """
-    cap = cv2.VideoCapture(str(path))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    idx = 0
+    q: queue.Queue = queue.Queue(maxsize=prefetch)
+    stop = threading.Event()
+    done = object()
+
+    def reader():
+        cap = cv2.VideoCapture(str(path))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        idx = 0
+        try:
+            while not stop.is_set():
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                q.put((idx, idx / fps, resize_to_width(frame, width)))
+                step = max(1, int(stride_fn()))
+                if not all(cap.grab() for _ in range(step - 1)):
+                    break
+                idx += step
+        finally:
+            cap.release()
+            q.put(done)
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
     try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            yield idx, idx / fps, frame
-            step = max(1, int(stride_fn()))
-            for _ in range(step - 1):
-                if not cap.grab():
-                    return
-            idx += step
+        while (item := q.get()) is not done:
+            yield item
     finally:
-        cap.release()
+        stop.set()
+        while thread.is_alive():          # unblock a reader waiting on a full queue
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            thread.join(timeout=0.05)

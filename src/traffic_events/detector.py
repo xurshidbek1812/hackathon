@@ -75,6 +75,8 @@ class Detector:
         torch.manual_seed(0)
         self.params = params
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        # fp16 halves inference time on T4-class GPUs, but GTX 16xx cards produce NaNs in half precision
+        self.half = self.device != "cpu" and "GTX 16" not in torch.cuda.get_device_name(0)
         path = WEIGHTS_DIR / params.weights
         self.model = YOLO(str(path if path.exists() else params.weights))
         self.classes = sorted(COCO_TO_CATEGORY)
@@ -84,7 +86,7 @@ class Detector:
             return []
         results = self.model.predict(
             frames, imgsz=imgsz or self.params.imgsz, conf=self.params.conf, iou=self.params.iou,
-            classes=self.classes, device=self.device, half=self.device != "cpu", verbose=False)
+            classes=self.classes, device=self.device, half=self.half, verbose=False)
         out = []
         for r in results:
             b = r.boxes
@@ -96,6 +98,7 @@ class Detector:
             cls = b.cls.cpu().numpy().astype(int)
             cat = np.array([COCO_TO_CATEGORY[c] for c in cls])
             dets = np.column_stack([xyxy, conf, cat, cls]).astype(np.float32)
+            dets = dets[np.isfinite(dets).all(axis=1)]
             out.append(suppress_riders_and_occupants(dets))
         return out
 

@@ -1,16 +1,271 @@
 {
-  "_doc": "Scene layout for the competition camera. Coordinates are normalised [x, y] in [0, 1]. Draw them with website/tools/scene_editor.html on a frame from samples/. null or missing = unknown, and the rules that need it are switched off. Fill this from samples/camera.md.",
-  "road": null,
-  "exclude": [],
-  "crossings": null,
-  "lanes": [],
-  "carriageways": [],
-  "solid_lines": [],
-  "stop_lines": [],
-  "intersection": null,
-  "signals": {},
-  "zones": {},
-  "prohibited_turns": [],
-  "u_turn_allowed": [],
-  "enabled_classes": null
+ "_doc": "Scene layout for the competition camera (C3896 view: a 4-arm junction, main road with a median running into the distance, cross street on the right, diagonal crosswalk bottom-left). No camera.md came with the starter kit, so this was drawn from sample frames. Coordinates normalised [x, y]. The main approach's signal heads face away from the camera, so its stop line has signal=null and the phase is inferred from the waiting queue (rules/signal.py QueuePhase).",
+ "road": [
+  [
+   0.0656,
+   0.0944
+  ],
+  [
+   0.1594,
+   0.0711
+  ],
+  [
+   0.35,
+   0.1356
+  ],
+  [
+   0.4875,
+   0.2
+  ],
+  [
+   0.625,
+   0.2556
+  ],
+  [
+   0.7125,
+   0.3156
+  ],
+  [
+   0.9062,
+   0.3867
+  ],
+  [
+   0.9625,
+   0.4244
+  ],
+  [
+   1.0,
+   0.4667
+  ],
+  [
+   1.0,
+   1.0
+  ],
+  [
+   0.0,
+   1.0
+  ],
+  [
+   0.0,
+   0.7644
+  ],
+  [
+   0.0938,
+   0.6667
+  ],
+  [
+   0.15,
+   0.6244
+  ],
+  [
+   0.1719,
+   0.5222
+  ],
+  [
+   0.0938,
+   0.3333
+  ]
+ ],
+ "exclude": [
+  [
+   [
+    0.2625,
+    0.7111
+   ],
+   [
+    0.3281,
+    0.6133
+   ],
+   [
+    0.3969,
+    0.68
+   ]
+  ],
+  [
+   [
+    0.0563,
+    0.8644
+   ],
+   [
+    0.1656,
+    0.7778
+   ],
+   [
+    0.225,
+    0.85
+   ]
+  ],
+  [
+   [
+    0.35,
+    0.7944
+   ],
+   [
+    0.4531,
+    0.7467
+   ],
+   [
+    0.5031,
+    0.8167
+   ]
+  ],
+  [
+   [
+    0.6125,
+    0.5
+   ],
+   [
+    0.625,
+    0.4889
+   ],
+   [
+    0.6844,
+    0.5133
+   ],
+   [
+    0.675,
+    0.5311
+   ],
+   [
+    0.6156,
+    0.5222
+   ]
+  ],
+  [
+   [
+    0.4625,
+    0.4056
+   ],
+   [
+    0.475,
+    0.3911
+   ],
+   [
+    0.625,
+    0.45
+   ],
+   [
+    0.6156,
+    0.48
+   ]
+  ]
+ ],
+ "crossings": [
+  [
+   [
+    0.1719,
+    0.55
+   ],
+   [
+    0.5906,
+    0.4722
+   ],
+   [
+    0.625,
+    0.5111
+   ],
+   [
+    0.1875,
+    0.6111
+   ]
+  ],
+  [
+   [
+    0.6656,
+    0.4611
+   ],
+   [
+    0.9125,
+    0.4222
+   ],
+   [
+    0.9344,
+    0.4578
+   ],
+   [
+    0.6781,
+    0.5056
+   ]
+  ],
+  [
+   [
+    0.0875,
+    0.6644
+   ],
+   [
+    0.1906,
+    0.65
+   ],
+   [
+    0.4906,
+    1.0
+   ],
+   [
+    0.3063,
+    1.0
+   ]
+  ]
+ ],
+ "lanes": [],
+ "carriageways": [],
+ "solid_lines": [],
+ "stop_lines": [
+  {
+   "name": "main_approach",
+   "line": [
+    [
+     0.1531,
+     0.4889
+    ],
+    [
+     0.4844,
+     0.4244
+    ]
+   ],
+   "approach": [
+    0.1,
+    1.0
+   ],
+   "signal": null
+  }
+ ],
+ "intersection": [
+  [
+   0.1875,
+   0.6089
+  ],
+  [
+   0.625,
+   0.5133
+  ],
+  [
+   0.6813,
+   0.5056
+  ],
+  [
+   0.9344,
+   0.4578
+  ],
+  [
+   1.0,
+   0.4722
+  ],
+  [
+   1.0,
+   1.0
+  ],
+  [
+   0.4938,
+   1.0
+  ],
+  [
+   0.1906,
+   0.6556
+  ]
+ ],
+ "signals": {},
+ "zones": {},
+ "prohibited_turns": [],
+ "u_turn_allowed": [],
+ "enabled_classes": null
 }

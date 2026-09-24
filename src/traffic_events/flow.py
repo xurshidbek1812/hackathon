@@ -62,7 +62,7 @@ class FlowField:
         self.stops += weight * other.stops
 
     # ------------------------------------------------------------------ queries
-    def direction_grid(self, min_count: float = 8, min_consistency: float = 0.65):
+    def direction_grid(self, min_count: float = 8, min_consistency: float = 0.8):
         """(GRID_H, GRID_W, 2) unit directions, NaN where unknown."""
         s = cv2.GaussianBlur(self.sum, (3, 3), 0.7)
         c = cv2.GaussianBlur(self.count, (3, 3), 0.7)

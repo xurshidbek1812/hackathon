@@ -1,7 +1,10 @@
 """Part B: causal accident-risk score from the frames seen so far.
 
 Every `stride`-th frame is detected and tracked; the other frames return the
-last score. The score is a logistic combination of interpretable cues:
+last score. Detection of a sampled frame runs in a worker thread while the
+harness decodes the next frames; its result is folded in at the next sampled
+frame. The score therefore lags by exactly one sample (0.1 s) - always the
+same lag, so the output is deterministic and uses past frames only. The score is a logistic combination of interpretable cues:
 
   ttc      closest predicted approach between two road users (time-to-collision
            and miss distance, in body units)
@@ -18,6 +21,7 @@ from __future__ import annotations
 import math
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -26,6 +30,7 @@ from .flow import GRID_H, GRID_W, FlowField
 from .params import RiskParams
 from .scene import load_scene
 from .tracker import ByteTracker
+from .video import resize_to_width
 
 
 class _History:
@@ -75,8 +80,12 @@ class RiskModel:
         if not self.scene.has_road and self.flow is not None:
             self.scene.set_learned_road_mask(self.flow.road_mask())
         self.detector = get_detector()
+        self.work_w = min(self.width, self.p.imgsz)
+        self.scale = self.width / self.work_w
+        self.worker = getattr(self, "worker", None) or ThreadPoolExecutor(max_workers=1)
+        self.pending = None
         self.tracker = ByteTracker()
-        self.stride = max(1, round(self.p.stride * self.fps / 25.0))
+        self.stride = max(1, round(self.fps / self.p.sample_hz))
         self.hist: dict[int, _History] = {}
         self.frame_i = 0
         self.score = 0.0
@@ -91,7 +100,18 @@ class RiskModel:
         if i % self.stride:
             return self.score
         self._check_budget(t_sec)
-        dets = self.detector([frame], imgsz=self.p.imgsz)[0]
+        if self.pending is not None:
+            t_prev, job = self.pending
+            self._update(job.result(), t_prev)
+        self.pending = (t_sec, self.worker.submit(self._detect, frame))
+        return self.score
+
+    def _detect(self, frame: np.ndarray) -> np.ndarray:
+        dets = self.detector([resize_to_width(frame, self.work_w)], imgsz=self.p.imgsz)[0]
+        dets[:, :4] *= self.scale
+        return dets
+
+    def _update(self, dets: np.ndarray, t_sec: float) -> None:
         maxlen = int(self.p.history_sec * self.fps / self.stride) + 2
         for tid, box, cat, _, _, hits in self.tracker.update(dets, t_sec):
             self.hist.setdefault(tid, _History(maxlen)).add(t_sec, box, cat, hits)
@@ -106,7 +126,6 @@ class RiskModel:
         decayed = self.score * math.exp(-p.decay_per_sec * dt)
         self.score = float(np.clip(decayed + p.ema * (target - decayed) if target > decayed else decayed, 0, 1))
         self.last_t = t_sec
-        return self.score
 
     def _check_budget(self, t_sec: float) -> None:
         """Emergency frame skipping on machines far slower than the target GPU."""

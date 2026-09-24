@@ -74,24 +74,32 @@ def analyze(video_path: str, params: PipelineParams = PipelineParams(), scene_pa
     meta = read_meta(video_path)
     scene = load_scene(meta.width, meta.height, scene_path)
     detector = get_detector()
-    base_stride = max(1, round(params.stride * meta.fps / 25.0))
+    base_stride = max(1, round(meta.fps / params.sample_hz))
     budget = _Budget(meta.duration, params.budget_ratio_part_a, base_stride, params.max_stride)
 
+    # Frames are decoded and shrunk to the detector's input width in a reader
+    # thread; boxes are mapped back to full-resolution pixels right away, so
+    # everything downstream (scene, rules, exports) works in video coordinates.
+    work_w = min(meta.width, params.detector.imgsz)
+    scale = meta.width / work_w
+    work_h = int(round(meta.height / scale))
     tracker = ByteTracker(params.tracker)
-    store = TrackStore(params.motion, params.tracker)
-    signals = SignalMonitor(scene.signals)
-    features = FrameFeatureCollector(meta.width, meta.height, params.feature_every_sec, params.feature_width)
+    store = TrackStore(params.motion, params.tracker, (meta.width, meta.height))
+    signals = SignalMonitor(scene.signals, scale)
+    features = FrameFeatureCollector(work_w, work_h, params.feature_every_sec, params.feature_width)
 
     def consume(batch):
         dets = detector([f for _, _, f in batch])
         for (_, t, frame), d in zip(batch, dets):
+            d[:, :4] *= scale
             tracked = tracker.update(d, t)
             store.add(t, tracked)
             signals.update(t, frame)
-            features.update(t, frame, np.array([b for _, b, *_ in tracked]).reshape(-1, 4))
+            boxes = np.array([b for _, b, *_ in tracked]).reshape(-1, 4) / scale
+            features.update(t, frame, boxes)
 
     batch = []
-    for idx, t, frame in iter_frames(video_path, lambda: budget.stride):
+    for idx, t, frame in iter_frames(video_path, lambda: budget.stride, width=work_w):
         batch.append((idx, t, frame))
         if len(batch) == params.detector.batch:
             consume(batch)
