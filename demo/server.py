@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import queue
 import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -52,6 +53,20 @@ def _set(job_id: str, **kw) -> None:
         jobs[job_id].update(kw)
 
 
+def _browser_copy(src: str, dst: Path) -> str:
+    """Playback copy the browser can decode (8-bit 4:2:0 H.264, no audio, same timing).
+
+    Professional camera files (e.g. Sony XAVC 10-bit 4:2:2 with PCM audio) are
+    analysed as they are, but browsers refuse to play them."""
+    import imageio_ffmpeg
+    cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-i", src,
+           "-map", "0:v:0", "-vf", "scale='min(1280,iw)':-2,format=yuv420p", "-c:v", "libx264",
+           "-preset", "veryfast", "-crf", "24", "-fps_mode", "passthrough", "-an",
+           "-movflags", "+faststart", str(dst)]
+    subprocess.run(cmd, check=True, timeout=600)
+    return str(dst)
+
+
 def _worker() -> None:
     while True:
         job_id = work.get()
@@ -60,7 +75,10 @@ def _worker() -> None:
         try:
             _set(job_id, status="running", progress=0.0, message="starting")
             t0 = time.perf_counter()
-            analysis = analyze(path, progress=lambda f, m: _set(job_id, progress=0.6 * f, message=m))
+            _set(job_id, message="preparing playback copy")
+            playback = _browser_copy(path, Path(path).with_name("playback.mp4"))
+            _set(job_id, playback=playback, progress=0.05)
+            analysis = analyze(path, progress=lambda f, m: _set(job_id, progress=0.05 + 0.55 * f, message=m))
             risk = risk_curve(path, progress=lambda f, m: _set(job_id, progress=0.6 + 0.4 * f, message=m))
             result = analysis_json(analysis, risk, name=job["name"])
             result["stats"]["total_seconds"] = round(time.perf_counter() - t0, 1)
@@ -127,7 +145,7 @@ def job_status(job_id: str):
     job = jobs.get(job_id)
     if job is None:
         raise HTTPException(404, "unknown job")
-    return {k: v for k, v in job.items() if k not in ("path", "created")}
+    return {k: v for k, v in job.items() if k not in ("path", "playback", "created")}
 
 
 @app.get("/api/jobs/{job_id}/video")
@@ -135,7 +153,7 @@ def job_video(job_id: str):
     job = jobs.get(job_id)
     if job is None:
         raise HTTPException(404, "unknown job")
-    return FileResponse(job["path"], media_type="video/mp4")
+    return FileResponse(job.get("playback") or job["path"], media_type="video/mp4")
 
 
 app.mount("/", StaticFiles(directory=ROOT / "website", html=True), name="site")
