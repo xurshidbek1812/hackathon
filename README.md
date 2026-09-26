@@ -149,4 +149,10 @@ No other external data is used. No hosted/paid model is called at any point.
 
 ## Team
 
-Team **Infinity** — members and contributions are listed on the website.
+Team **Infinity**
+
+| Member | Role | Contributions |
+|---|---|---|
+| Suxrob Muminov ([GitHub](https://github.com/suxrobmuminov2007-creator), [LinkedIn](https://www.linkedin.com/in/suxrob-muminov-b3a8a0395/)) | Team leader | managed the team, coordinated the work and the submission |
+| Xurshidbek Bekchonov ([GitHub](https://github.com/xurshidbek1812), [LinkedIn](https://www.linkedin.com/in/xurshidbek-bekchonov-98461235b/)) | Website developer | team website, live demo page and upload flow, results / EDA / dashboard views |
+| Nodirbek Ro'ziqulov ([GitHub](https://github.com/quixtorm)) | Computer vision & analysis | detection and tracking pipeline, event rules and their calibration, EDA, accident-risk model (Part B), evaluation and time budget |

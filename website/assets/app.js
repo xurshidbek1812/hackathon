@@ -44,7 +44,20 @@
         { name: "Library management", about: "library management app (JavaScript)", url: "https://github.com/xurshidbek1812/Library-management" },
       ],
     },
-    { name: "Member 3", role: "CV pipeline & data", did: ["Detection & tracking", "Event rules", "Dev-set annotation & evaluation"], links: {} },
+    {
+      name: "Nodirbek Ro'ziqulov", role: "Computer vision & analysis",
+      did: ["Detection and tracking pipeline", "Event rules and their calibration on the sample video",
+            "EDA and the accident-risk model (Part B)", "Evaluation and time budget"],
+      links: {
+        GitHub: "https://github.com/quixtorm",
+        Portfolio: "https://github.com/quixtorm?tab=repositories",
+      },
+      projects: [
+        { name: "digest-bot", about: "Telegram bot that sends statistics about world problems (Python)", url: "https://github.com/quixtorm/digest-bot" },
+        { name: "Fake data generator", about: "Telegram bot that generates random fake data", url: "https://github.com/quixtorm/Fake-data-generator" },
+        { name: "Mini ChatApp", about: "chat application for text messages (Java)", url: "https://github.com/quixtorm/Mini-ChatApp-project" },
+      ],
+    },
   ];
 
   async function getJSON(url) {
