@@ -50,6 +50,7 @@
             "EDA and the accident-risk model (Part B)", "Evaluation and time budget"],
       links: {
         GitHub: "https://github.com/quixtorm",
+        LinkedIn: "https://www.linkedin.com/in/nadir-ruz-a8898443a/",
         Portfolio: "https://github.com/quixtorm?tab=repositories",
       },
       projects: [

@@ -155,4 +155,4 @@ Team **Infinity**
 |---|---|---|
 | Suxrob Muminov ([GitHub](https://github.com/suxrobmuminov2007-creator), [LinkedIn](https://www.linkedin.com/in/suxrob-muminov-b3a8a0395/)) | Team leader | managed the team, coordinated the work and the submission |
 | Xurshidbek Bekchonov ([GitHub](https://github.com/xurshidbek1812), [LinkedIn](https://www.linkedin.com/in/xurshidbek-bekchonov-98461235b/)) | Website developer | team website, live demo page and upload flow, results / EDA / dashboard views |
-| Nodirbek Ro'ziqulov ([GitHub](https://github.com/quixtorm)) | Computer vision & analysis | detection and tracking pipeline, event rules and their calibration, EDA, accident-risk model (Part B), evaluation and time budget |
+| Nodirbek Ro'ziqulov ([GitHub](https://github.com/quixtorm), [LinkedIn](https://www.linkedin.com/in/nadir-ruz-a8898443a/)) | Computer vision & analysis | detection and tracking pipeline, event rules and their calibration, EDA, accident-risk model (Part B), evaluation and time budget |
