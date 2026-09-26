@@ -6,17 +6,18 @@ from typing import Callable
 import numpy as np
 
 from .detector import CATEGORY_NAMES
+from .params import RiskParams
 from .pipeline import Analysis
 from .risk import RiskModel
 from .video import iter_frames, read_meta
 
 
 def risk_curve(video_path: str, progress: Callable[[float, str], None] | None = None,
-               every_sec: float = 0.2) -> list[list[float]]:
+               every_sec: float = 0.2, params: RiskParams = RiskParams()) -> list[list[float]]:
     """Stream the video through the causal RiskModel exactly as the harness
     does; keep one [t, score] point per `every_sec` for plotting."""
     meta = read_meta(video_path)
-    model = RiskModel()
+    model = RiskModel(params)
     model.reset({"video_id": meta.path, "fps": meta.fps, "width": meta.width,
                  "height": meta.height, "n_frames": meta.n_frames})
     out, next_t = [], 0.0

@@ -73,7 +73,7 @@ def analyze(video_path: str, params: PipelineParams = PipelineParams(), scene_pa
     t_start = time.perf_counter()
     meta = read_meta(video_path)
     scene = load_scene(meta.width, meta.height, scene_path)
-    detector = get_detector()
+    detector = get_detector(params.detector)
     base_stride = max(1, round(meta.fps / params.sample_hz))
     budget = _Budget(meta.duration, params.budget_ratio_part_a, base_stride, params.max_stride)
 

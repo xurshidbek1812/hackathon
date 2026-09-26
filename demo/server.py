@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from traffic_events.export import analysis_json, risk_curve  # noqa: E402
+from traffic_events.params import DetectorParams, PipelineParams, RiskParams  # noqa: E402
 from traffic_events.pipeline import analyze  # noqa: E402
 from traffic_events.video import read_meta  # noqa: E402
 
@@ -40,8 +41,16 @@ from traffic_events.video import read_meta  # noqa: E402
 MAX_BYTES = int(os.environ.get("DEMO_MAX_MB", 8192)) * 2**20
 MAX_SECONDS = int(os.environ.get("DEMO_MAX_SECONDS", 600))
 MAX_QUEUE = 5
+
+# DEMO_PROFILE=cpu: a free CPU host (no GPU) runs a lighter detector at 5 fps so a
+# 2-minute clip finishes in minutes. The default "full" profile equals the submission.
+if os.environ.get("DEMO_PROFILE", "full") == "cpu":
+    PIPELINE = PipelineParams(sample_hz=5.0, detector=DetectorParams(weights="yolo11s.pt", imgsz=640))
+    RISK = RiskParams(sample_hz=5.0, weights="yolo11s.pt", imgsz=640)
+else:
+    PIPELINE, RISK = PipelineParams(), RiskParams()
 JOB_TTL_SEC = 3600
-JOBS_DIR = ROOT / ".demo_jobs"
+JOBS_DIR = Path(os.environ.get("DEMO_JOBS_DIR", ROOT / ".demo_jobs"))
 
 app = FastAPI(title="Team Infinity - traffic event detection demo")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -88,24 +97,16 @@ def _worker() -> None:
         try:
             _set(job_id, status="running", progress=0.0, message="starting")
             t0 = time.perf_counter()
-            # the playback copy (CPU) is made while the analysis runs (mostly GPU)
-            copy_error: list[Exception] = []
-
-            def make_copy():
-                try:
-                    _set(job_id, playback=_browser_copy(path, Path(path).with_name("playback.mp4")))
-                except Exception as exc:          # analysis still succeeds; playback falls back to the upload
-                    copy_error.append(exc)
-
-            copier = threading.Thread(target=make_copy, daemon=True)
-            copier.start()
-            analysis = analyze(path, progress=lambda f, m: _set(job_id, progress=0.6 * f, message=m))
-            risk = risk_curve(path, progress=lambda f, m: _set(job_id, progress=0.6 + 0.4 * f, message=m))
-            if copier.is_alive():
-                _set(job_id, message="finishing playback copy")
-                copier.join()
-            if copy_error:
-                traceback.print_exception(copy_error[0])
+            # Decode the (possibly 4K, 10-bit) upload once into a 960 px browser copy and
+            # analyse that copy: the pipeline shrinks frames to <= 960 px anyway, so the
+            # events are the same, and the big file is not decoded twice more.
+            _set(job_id, message="preparing video")
+            playback = _browser_copy(path, Path(path).with_name("playback.mp4"))
+            _set(job_id, playback=playback, progress=0.15)
+            analysis = analyze(playback, params=PIPELINE,
+                               progress=lambda f, m: _set(job_id, progress=0.15 + 0.5 * f, message=m))
+            risk = risk_curve(playback, params=RISK,
+                              progress=lambda f, m: _set(job_id, progress=0.65 + 0.35 * f, message=m))
             result = analysis_json(analysis, risk, name=job["name"])
             result["stats"]["total_seconds"] = round(time.perf_counter() - t0, 1)
             _set(job_id, status="done", progress=1.0, message="done", result=result)
@@ -129,7 +130,8 @@ threading.Thread(target=_worker, daemon=True).start()
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "queued": work.qsize(), "max_mb": MAX_BYTES // 2**20, "max_seconds": MAX_SECONDS}
+    return {"ok": True, "queued": work.qsize(), "max_mb": MAX_BYTES // 2**20, "max_seconds": MAX_SECONDS,
+            "profile": os.environ.get("DEMO_PROFILE", "full")}
 
 
 @app.post("/api/jobs")

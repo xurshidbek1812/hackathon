@@ -124,6 +124,9 @@ pytest -q
 ```
 
 Live demo locally: `uvicorn demo.server:app --port 7860`, then open http://localhost:7860.
+Online, the same site and demo run as a Hugging Face Docker Space (`python demo/deploy_hf_space.py --space
+<user>/<name> --token <token>`). That host has no GPU, so it uses `DEMO_PROFILE=cpu`: the upload is decoded
+once into a 960 px copy and analysed with YOLO11-s at 5 frames per second (limits 2 min, 2.5 GB).
 
 ## Determinism
 

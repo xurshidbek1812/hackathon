@@ -241,7 +241,8 @@
       const size = limits.mb >= 1024 ? `${+(limits.mb / 1024).toFixed(1)} GB` : `${limits.mb} MB`;
       document.getElementById("demo-limits").innerHTML =
         `<span class="chip">.mp4 up to ${size}</span><span class="chip">up to ${Math.round(limits.seconds / 60 * 10) / 10} min</span>` +
-        `<span class="chip">any resolution, incl. 4K camera files</span>`;
+        `<span class="chip">any resolution, incl. 4K camera files</span>` +
+        (h.profile === "cpu" ? `<span class="chip">free CPU server: allow ~5 min per minute of video</span>` : "");
     }).catch(() => { offline.hidden = false; });
 
     const pick = (f) => {

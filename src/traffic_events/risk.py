@@ -27,7 +27,7 @@ import numpy as np
 
 from .detector import BIKE, PERSON, VEHICLE, get_detector
 from .flow import GRID_H, GRID_W, FlowField
-from .params import RiskParams
+from .params import DetectorParams, RiskParams
 from .scene import load_scene
 from .tracker import ByteTracker
 from .video import resize_to_width
@@ -79,7 +79,7 @@ class RiskModel:
         self.flow_dirs = self.flow.direction_grid() if self.flow is not None else None
         if not self.scene.has_road and self.flow is not None:
             self.scene.set_learned_road_mask(self.flow.road_mask())
-        self.detector = get_detector()
+        self.detector = get_detector(DetectorParams(weights=self.p.weights))
         self.work_w = min(self.width, self.p.imgsz)
         self.scale = self.width / self.work_w
         self.worker = getattr(self, "worker", None) or ThreadPoolExecutor(max_workers=1)

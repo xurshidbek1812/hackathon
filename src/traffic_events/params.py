@@ -105,6 +105,7 @@ class PipelineParams:
 class RiskParams:
     sample_hz: float = 10.0                 # frames per second the risk model looks at
     max_stride: int = 10
+    weights: str = DetectorParams.weights
     imgsz: int = 640
     budget_ratio: float = 1.0               # target wall time / video time for Part B
     history_sec: float = 2.0

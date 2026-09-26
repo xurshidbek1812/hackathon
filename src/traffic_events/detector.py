@@ -103,7 +103,7 @@ class Detector:
         return out
 
 
-@lru_cache(maxsize=1)
-def get_detector() -> Detector:
-    """One model instance shared by Part A and Part B (weights loaded once)."""
-    return Detector()
+@lru_cache(maxsize=2)
+def get_detector(params: DetectorParams = DetectorParams()) -> Detector:
+    """One model instance per setting, shared by Part A and Part B (weights loaded once)."""
+    return Detector(params)
