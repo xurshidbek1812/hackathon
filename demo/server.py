@@ -73,8 +73,8 @@ def _browser_copy(src: str, dst: Path) -> str:
     analysed as they are, but browsers refuse to play them."""
     import imageio_ffmpeg
     cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-i", src,
-           "-map", "0:v:0", "-vf", "scale='min(1280,iw)':-2,format=yuv420p", "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "24", "-fps_mode", "passthrough", "-an",
+           "-map", "0:v:0", "-vf", "scale='min(960,iw)':-2,format=yuv420p", "-c:v", "libx264",
+           "-preset", "ultrafast", "-crf", "26", "-fps_mode", "passthrough", "-an",
            "-movflags", "+faststart", str(dst)]
     subprocess.run(cmd, check=True, timeout=3600)
     return str(dst)
@@ -88,11 +88,24 @@ def _worker() -> None:
         try:
             _set(job_id, status="running", progress=0.0, message="starting")
             t0 = time.perf_counter()
-            _set(job_id, message="preparing playback copy")
-            playback = _browser_copy(path, Path(path).with_name("playback.mp4"))
-            _set(job_id, playback=playback, progress=0.05)
-            analysis = analyze(path, progress=lambda f, m: _set(job_id, progress=0.05 + 0.55 * f, message=m))
+            # the playback copy (CPU) is made while the analysis runs (mostly GPU)
+            copy_error: list[Exception] = []
+
+            def make_copy():
+                try:
+                    _set(job_id, playback=_browser_copy(path, Path(path).with_name("playback.mp4")))
+                except Exception as exc:          # analysis still succeeds; playback falls back to the upload
+                    copy_error.append(exc)
+
+            copier = threading.Thread(target=make_copy, daemon=True)
+            copier.start()
+            analysis = analyze(path, progress=lambda f, m: _set(job_id, progress=0.6 * f, message=m))
             risk = risk_curve(path, progress=lambda f, m: _set(job_id, progress=0.6 + 0.4 * f, message=m))
+            if copier.is_alive():
+                _set(job_id, message="finishing playback copy")
+                copier.join()
+            if copy_error:
+                traceback.print_exception(copy_error[0])
             result = analysis_json(analysis, risk, name=job["name"])
             result["stats"]["total_seconds"] = round(time.perf_counter() - t0, 1)
             _set(job_id, status="done", progress=1.0, message="done", result=result)
