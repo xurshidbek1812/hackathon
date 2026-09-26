@@ -197,6 +197,8 @@ tbody tr:hover { background: #fafbfc; }
   background: var(--accent-soft); color: var(--accent-ink); margin-bottom: 14px; }
 .member .role { color: var(--accent); font-weight: 600; font-size: 14px; margin-bottom: 6px; }
 .member ul { padding-left: 18px; color: var(--text-2); margin: 10px 0; font-size: 14.5px; }
+.member .projects-title { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; margin-top: 14px; }
+.member ul.projects { margin-top: 6px; }
 .member .socials { display: flex; gap: 14px; font-size: 14px; margin-top: 10px; }
 .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 14px; }
 .link-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;

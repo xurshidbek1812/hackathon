@@ -21,9 +21,22 @@
   ];
 
   const TEAM = [
-    { name: "Member 1", role: "Team lead · CV pipeline", did: ["Detection & tracking", "Event rules", "Evaluation"], links: {} },
+    {
+      name: "Xurshidbek Bekchonov", role: "Website developer",
+      did: ["Built the team website", "Live demo page and upload flow", "Results, EDA and dashboard views"],
+      links: {
+        GitHub: "https://github.com/xurshidbek1812",
+        LinkedIn: "https://www.linkedin.com/in/xurshidbek-bekchonov-98461235b/",
+        Portfolio: "https://github.com/xurshidbek1812?tab=repositories",
+      },
+      projects: [
+        { name: "iPhone House", about: "online store, frontend + backend (JavaScript)", url: "https://github.com/xurshidbek1812/iphone-house" },
+        { name: "Clothing store", about: "e-commerce site, frontend + backend (JavaScript)", url: "https://github.com/xurshidbek1812/clothing-store-frontend" },
+        { name: "Library management", about: "library management app (JavaScript)", url: "https://github.com/xurshidbek1812/Library-management" },
+      ],
+    },
     { name: "Member 2", role: "Data & modelling", did: ["Dev-set annotation", "EDA", "Accident / near-miss tuning"], links: {} },
-    { name: "Member 3", role: "Web & demo", did: ["Website", "Live demo backend", "Visualisations"], links: {} },
+    { name: "Member 3", role: "CV pipeline", did: ["Detection & tracking", "Event rules", "Evaluation"], links: {} },
   ];
 
   async function getJSON(url) {
@@ -51,8 +64,11 @@
       const card = html("article", "card member");
       const initials = m.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
       const links = Object.entries(m.links).map(([k, v]) => `<a href="${v}" target="_blank" rel="noopener">${k}</a>`).join("");
+      const projects = (m.projects || []).map((p) =>
+        `<li><a href="${p.url}" target="_blank" rel="noopener">${p.name}</a> — ${p.about}</li>`).join("");
       card.innerHTML = `<div class="avatar">${initials}</div><h3>${m.name}</h3><div class="role">${m.role}</div>
         <ul>${m.did.map((d) => `<li>${d}</li>`).join("")}</ul>
+        ${projects ? `<div class="projects-title">Previous projects</div><ul class="projects">${projects}</ul>` : ""}
         <div class="socials">${links || '<span class="small">GitHub · LinkedIn · portfolio — coming soon</span>'}</div>`;
       host.appendChild(card);
     }
