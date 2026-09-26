@@ -72,7 +72,7 @@
     const hours = index.reduce((s, v) => s + v.duration, 0) / 3600;
     const nEvents = index.reduce((s, v) => s + v.n_events, 0);
     kpis.append(kpi("event classes", 14), kpi("sample videos analysed", index.length || "—"),
-      kpi("hours of footage", index.length ? hours.toFixed(1) : "—"), kpi("events found", index.length ? nEvents : "—"),
+      (hours >= 1 ? kpi("hours of footage", hours.toFixed(1)) : kpi("minutes of footage", index.length ? (hours * 60).toFixed(1) : "—")), kpi("events found", index.length ? nEvents : "—"),
       kpi("paid APIs used", 0));
     if (!index.length) return [];
 
@@ -88,7 +88,7 @@
       results[v.stem] = results[v.stem] || await getJSON(`data/results/${v.stem}.json`);
       const res = results[v.stem];
       Charts.createPlayer(view, { videoUrl: `data/videos/${v.stem}.mp4`, result: res, overlay: false });
-      const note = html("p", "small", `${v.video} · ${fmt(res.meta.duration)} · ${res.meta.width}×${res.meta.height} @ ${res.meta.fps} fps · ` +
+      const note = html("p", "small", `${v.video} · ${fmt(res.meta.duration)} · ${res.meta.width}×${res.meta.height} @ ${(+res.meta.fps).toFixed(2)} fps · ` +
         `${res.stats.n_tracks} tracks · analysed in ${res.stats.seconds}s (stride ${res.stats.stride})`);
       view.appendChild(note);
     };
@@ -169,7 +169,7 @@
         view.innerHTML = "";
         if (v.counts_per_minute) Charts.seriesChart(view, v.counts_per_minute, { title: "Road users in view per second (mean per minute)", xLabel: (i) => `${Math.round(i)}m` });
         Charts.seriesChart(view, { brightness: v.props.brightness.mean, contrast: v.props.brightness.std },
-          { title: "Lighting: mean brightness and contrast over time", xLabel: (i) => fmt(v.props.brightness.t[Math.round(i)] || 0), colors: { brightness: "#feca57", contrast: "#8395a7" } });
+          { title: "Lighting: mean brightness and contrast over time", xLabel: (i) => fmt(v.props.brightness.t[Math.round(i)] || 0), colors: { brightness: "#ca8504", contrast: "#667085" } });
         const imgs = html("div", "grid-imgs mt");
         for (const [key, cap] of [["vehicles_heatmap", "Where vehicles drive (ground-point density)"], ["pedestrian_heatmap", "Where pedestrians walk"], ["trajectories", "Vehicle trajectories, coloured by direction"]]) {
           const card = html("div", "card");
@@ -196,12 +196,20 @@
     const out = document.getElementById("demo-result");
     const offline = document.getElementById("demo-offline");
 
-    fetch(`${API}/api/health`).then((r) => { if (!r.ok) throw 0; }).catch(() => { offline.hidden = false; });
+    // the server decides what it accepts; show it and enforce it before uploading
+    const limits = { mb: Infinity, seconds: Infinity };
+    fetch(`${API}/api/health`).then((r) => { if (!r.ok) throw 0; return r.json(); }).then((h) => {
+      limits.mb = h.max_mb ?? Infinity; limits.seconds = h.max_seconds ?? Infinity;
+      const size = limits.mb >= 1024 ? `${+(limits.mb / 1024).toFixed(1)} GB` : `${limits.mb} MB`;
+      document.getElementById("demo-limits").innerHTML =
+        `<span class="chip">.mp4 up to ${size}</span><span class="chip">up to ${Math.round(limits.seconds / 60 * 10) / 10} min</span>` +
+        `<span class="chip">any resolution, incl. 4K camera files</span>`;
+    }).catch(() => { offline.hidden = false; });
 
     const pick = (f) => {
       if (!f) return;
       if (!/\.mp4$/i.test(f.name)) { document.getElementById("drop-text").textContent = "Please choose an .mp4 file"; return; }
-      if (f.size > 200 * 2 ** 20) { document.getElementById("drop-text").textContent = "File is larger than 200 MB"; return; }
+      if (f.size > limits.mb * 2 ** 20) { document.getElementById("drop-text").textContent = `File is larger than ${limits.mb} MB`; return; }
       document.getElementById("drop-text").textContent = `${f.name} · ${(f.size / 2 ** 20).toFixed(1)} MB`;
       btn.disabled = false;
       form._file = f;

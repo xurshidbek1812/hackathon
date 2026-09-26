@@ -50,7 +50,7 @@ def video_properties(path: Path, sample_every_sec: float = 5.0) -> dict:
         "duration": round(duration, 1), "size_mb": round(size_mb, 1),
         "bitrate_mbps": round(size_mb * 8 / max(duration, 1e-6), 2),
         "codec": "".join(chr((fourcc >> 8 * k) & 0xFF) for k in range(4)).strip(),
-        "lighting": "night" if mean_b < 60 else "dusk/dawn" if mean_b < 95 else "day",
+        "lighting": "night" if mean_b < 45 else "dusk/dawn" if mean_b < 70 else "day",   # tuned on the 4K sample
         "brightness": {"t": times, "mean": brightness, "std": contrast},
     }
 

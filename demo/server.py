@@ -3,7 +3,7 @@
     uvicorn demo.server:app --host 0.0.0.0 --port 7860
 
 API
-    POST /api/jobs              multipart "file" (.mp4, <= 200 MB, <= 150 s) -> {"id"}
+    POST /api/jobs              multipart "file" (.mp4, size/length limits from DEMO_MAX_MB / DEMO_MAX_SECONDS) -> {"id"}
     GET  /api/jobs/{id}         status, progress, message, and the result when done
     GET  /api/jobs/{id}/video   the uploaded clip, for playback under the overlay
     GET  /api/health
@@ -12,6 +12,7 @@ Jobs run one at a time in a background thread (CPU inference is fine).
 """
 from __future__ import annotations
 
+import os
 import queue
 import shutil
 import subprocess
@@ -34,8 +35,10 @@ from traffic_events.export import analysis_json, risk_curve  # noqa: E402
 from traffic_events.pipeline import analyze  # noqa: E402
 from traffic_events.video import read_meta  # noqa: E402
 
-MAX_BYTES = 200 * 2**20
-MAX_SECONDS = 150
+# Limits are settings: generous by default (a full camera file is ~6 GB for 5-6 min of 4K);
+# a small shared CPU host should lower them, e.g. DEMO_MAX_MB=500 DEMO_MAX_SECONDS=120.
+MAX_BYTES = int(os.environ.get("DEMO_MAX_MB", 8192)) * 2**20
+MAX_SECONDS = int(os.environ.get("DEMO_MAX_SECONDS", 600))
 MAX_QUEUE = 5
 JOB_TTL_SEC = 3600
 JOBS_DIR = ROOT / ".demo_jobs"
@@ -63,7 +66,7 @@ def _browser_copy(src: str, dst: Path) -> str:
            "-map", "0:v:0", "-vf", "scale='min(1280,iw)':-2,format=yuv420p", "-c:v", "libx264",
            "-preset", "veryfast", "-crf", "24", "-fps_mode", "passthrough", "-an",
            "-movflags", "+faststart", str(dst)]
-    subprocess.run(cmd, check=True, timeout=600)
+    subprocess.run(cmd, check=True, timeout=3600)
     return str(dst)
 
 
@@ -103,7 +106,7 @@ threading.Thread(target=_worker, daemon=True).start()
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "queued": work.qsize()}
+    return {"ok": True, "queued": work.qsize(), "max_mb": MAX_BYTES // 2**20, "max_seconds": MAX_SECONDS}
 
 
 @app.post("/api/jobs")
@@ -123,7 +126,7 @@ async def create_job(file: UploadFile = File(...)):
             size += len(chunk)
             if size > MAX_BYTES:
                 shutil.rmtree(folder, ignore_errors=True)
-                raise HTTPException(413, "file larger than 200 MB")
+                raise HTTPException(413, f"file larger than {MAX_BYTES // 2**20} MB")
             f.write(chunk)
     try:
         meta = read_meta(str(path))

@@ -3,22 +3,23 @@
   const NS = "http://www.w3.org/2000/svg";
 
   const CLASS_INFO = {
-    accident:            { color: "#ff5a6a", name: "Accident" },
-    near_miss:           { color: "#ff9f43", name: "Near miss" },
-    red_light:           { color: "#ee5253", name: "Red-light running" },
-    wrong_way:           { color: "#f368e0", name: "Wrong-way driving" },
-    illegal_u_turn:      { color: "#a55eea", name: "Illegal U-turn" },
-    stopped_vehicle:     { color: "#feca57", name: "Stopped vehicle" },
-    jaywalking:          { color: "#1dd1a1", name: "Pedestrian on roadway" },
-    failure_to_yield:    { color: "#10ac84", name: "Not yielding to pedestrian" },
-    illegal_turn:        { color: "#5f27cd", name: "Illegal turn" },
-    solid_line_crossing: { color: "#48dbfb", name: "Solid line crossing" },
-    stop_line:           { color: "#ff6b6b", name: "Stop-line violation" },
-    congestion:          { color: "#8395a7", name: "Congestion" },
-    road_obstacle:       { color: "#c8d6e5", name: "Obstacle on road" },
-    fire_smoke:          { color: "#ff7f00", name: "Fire or smoke" },
+    accident:            { color: "#d92d20", name: "Accident" },
+    near_miss:           { color: "#ef6820", name: "Near miss" },
+    red_light:           { color: "#9e165f", name: "Red-light running" },
+    wrong_way:           { color: "#c11574", name: "Wrong-way driving" },
+    illegal_u_turn:      { color: "#6938ef", name: "Illegal U-turn" },
+    stopped_vehicle:     { color: "#ca8504", name: "Stopped vehicle" },
+    jaywalking:          { color: "#079455", name: "Pedestrian on roadway" },
+    failure_to_yield:    { color: "#0e9384", name: "Not yielding to pedestrian" },
+    illegal_turn:        { color: "#444ce7", name: "Illegal turn" },
+    solid_line_crossing: { color: "#0086c9", name: "Solid line crossing" },
+    stop_line:           { color: "#e31b54", name: "Stop-line violation" },
+    congestion:          { color: "#475467", name: "Congestion" },
+    road_obstacle:       { color: "#7a5af8", name: "Obstacle on road" },
+    fire_smoke:          { color: "#f79009", name: "Fire or smoke" },
   };
-  const CAT_COLORS = { vehicle: "#36c2ff", bike: "#ffc850", person: "#78ff78", obstacle: "#ff5050" };
+  const CAT_COLORS = { vehicle: "#2f5bea", bike: "#dc6803", person: "#079455", obstacle: "#d92d20" };
+  const MUTED = "#667085", LABEL = "#344054";
 
   function el(tag, attrs = {}, parent) {
     const e = document.createElementNS(NS, tag);
@@ -48,9 +49,9 @@
       el("line", { x1: x(t), x2: x(t), y1: 0, y2: H - 18 }, axis);
       el("text", { x: x(t), y: H - 4, "text-anchor": "middle" }, axis).textContent = fmt(t);
     }
-    if (!classes.length) el("text", { x: W / 2, y: 16, "text-anchor": "middle", fill: "#93a1b8" }, svg).textContent = "no events detected";
+    if (!classes.length) el("text", { x: W / 2, y: 16, "text-anchor": "middle", fill: MUTED }, svg).textContent = "no events detected";
     classes.forEach((c, i) => {
-      const info = CLASS_INFO[c] || { color: "#ccc", name: c };
+      const info = CLASS_INFO[c] || { color: "#98a2b3", name: c };
       el("text", { x: 4, y: i * rowH + 15, fill: info.color, "font-size": 12 }, svg).textContent = info.name;
       for (const ev of events.filter((e) => e[2] === c)) {
         const r = el("rect", { class: "ev", x: x(ev[0]), y: i * rowH + 3, width: Math.max(3, x(ev[1]) - x(ev[0])), height: rowH - 6, rx: 3, fill: info.color }, svg);
@@ -69,7 +70,7 @@
   }
 
   /** Line chart over time (risk curve). */
-  function lineChart(host, points, { title = "", duration, yMax = 1, threshold, color = "#36c2ff", onSeek, events = [] } = {}) {
+  function lineChart(host, points, { title = "", duration, yMax = 1, threshold, color = "#2f5bea", onSeek, events = [] } = {}) {
     const W = 900, H = 150, left = 34, bottom = 20;
     const box = html("div", "chart");
     box.appendChild(html("h4", null, title));
@@ -78,7 +79,7 @@
     const x = (t) => left + (t / dur) * (W - left - 10);
     const y = (v) => 6 + (1 - v / yMax) * (H - bottom - 6);
     for (const ev of events.filter((e) => e[2] === "accident")) {
-      el("rect", { x: x(ev[0] - 5), y: 6, width: x(ev[0]) - x(ev[0] - 5), height: H - bottom - 6, fill: "rgba(255,90,106,.15)" }, svg);
+      el("rect", { x: x(ev[0] - 5), y: 6, width: x(ev[0]) - x(ev[0] - 5), height: H - bottom - 6, fill: "rgba(217,45,32,.10)" }, svg);
     }
     const axis = el("g", { class: "axis" }, svg);
     for (const v of [0, yMax / 2, yMax]) {
@@ -92,7 +93,7 @@
       el("path", { d: d + `L${x(points[points.length - 1][0])},${y(0)}L${x(points[0][0])},${y(0)}Z`, fill: color, opacity: 0.15 }, svg);
       el("path", { d, stroke: color, "stroke-width": 1.8, fill: "none" }, svg);
     } else {
-      el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: "#93a1b8" }, svg).textContent = "no data";
+      el("text", { x: W / 2, y: H / 2, "text-anchor": "middle", fill: MUTED }, svg).textContent = "no data";
     }
     const cursor = el("line", { class: "cursor", x1: left, x2: left, y1: 6, y2: H - bottom }, svg);
     svg.addEventListener("click", (e) => { const p = svgPoint(svg, e); if (p.x >= left && onSeek) onSeek(((p.x - left) / (W - left - 10)) * dur); });
@@ -119,10 +120,10 @@
     for (const i of niceTicks(n - 1, 8)) el("text", { x: x(i), y: H - 4, "text-anchor": "middle" }, axis).textContent = xLabel(i);
     for (const k of keys) {
       const d = series[k].map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-      el("path", { d, stroke: colors[k] || "#ccc", "stroke-width": 1.6, fill: "none" }, svg);
+      el("path", { d, stroke: colors[k] || "#98a2b3", "stroke-width": 1.6, fill: "none" }, svg);
     }
     const legend = html("div", "chips");
-    for (const k of keys) { const c = html("span", "chip"); c.innerHTML = `<span class="swatch" style="background:${colors[k] || "#ccc"}"></span>${k}`; legend.appendChild(c); }
+    for (const k of keys) { const c = html("span", "chip"); c.innerHTML = `<span class="swatch" style="background:${colors[k] || "#98a2b3"}"></span>${k}`; legend.appendChild(c); }
     box.appendChild(legend);
     host.appendChild(box);
   }
@@ -135,16 +136,16 @@
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}` }, box);
     const vMax = Math.max(1e-9, ...items.map((i) => i.value));
     items.forEach((it, i) => {
-      el("text", { x: left - 8, y: i * rowH + 18, "text-anchor": "end", fill: "#c7d1e2", "font-size": 13 }, svg).textContent = it.label;
+      el("text", { x: left - 8, y: i * rowH + 18, "text-anchor": "end", fill: LABEL, "font-size": 13 }, svg).textContent = it.label;
       const w = ((W - left - 60) * it.value) / vMax;
       el("rect", { x: left, y: i * rowH + 5, width: Math.max(2, w), height: rowH - 10, rx: 3, fill: it.color || "#36c2ff" }, svg);
-      el("text", { x: left + w + 6, y: i * rowH + 18, fill: "#93a1b8", "font-size": 12 }, svg).textContent = `${+it.value.toFixed(2)}${unit}`;
+      el("text", { x: left + w + 6, y: i * rowH + 18, fill: MUTED, "font-size": 12 }, svg).textContent = `${+it.value.toFixed(2)}${unit}`;
     });
-    if (!items.length) el("text", { x: W / 2, y: 16, "text-anchor": "middle", fill: "#93a1b8" }, svg).textContent = "no data";
+    if (!items.length) el("text", { x: W / 2, y: 16, "text-anchor": "middle", fill: MUTED }, svg).textContent = "no data";
     host.appendChild(box);
   }
 
-  function histogram(host, values, { title = "", bins = 20, color = "#7cf0c8", xMax } = {}) {
+  function histogram(host, values, { title = "", bins = 20, color = "#2f5bea", xMax } = {}) {
     const max = xMax || Math.max(1e-9, ...values);
     const counts = new Array(bins).fill(0);
     for (const v of values) counts[Math.min(bins - 1, Math.floor((v / max) * bins))]++;
@@ -192,18 +193,18 @@
         let i = bisect(tr.t, t);
         if (Math.abs(tr.t[i] - t) > 0.3) continue;
         const [x1, y1, x2, y2] = interpBox(tr, t, i);
-        const col = hot.has(tr.id) ? "#ff5a6a" : CAT_COLORS[tr.cat] || "#fff";
+        const col = hot.has(tr.id) ? "#f04438" : CAT_COLORS[tr.cat] || "#fff";
         ctx.strokeStyle = col; ctx.lineWidth = (hot.has(tr.id) ? 3.5 : 2) * dpr;
         ctx.strokeRect(x1 * sx, y1 * sy, (x2 - x1) * sx, (y2 - y1) * sy);
         ctx.fillStyle = col; ctx.fillText(`${tr.name} ${tr.id}`, x1 * sx, y1 * sy - 3 * dpr);
       }
       active.forEach((e, k) => {
-        const info = CLASS_INFO[e[2]] || { color: "#ccc", name: e[2] };
+        const info = CLASS_INFO[e[2]] || { color: "#98a2b3", name: e[2] };
         const label = `${info.name.toUpperCase()}  ${fmt(e[0])}–${fmt(e[1])}`;
         ctx.font = `600 ${13 * dpr}px system-ui`;
         const w = ctx.measureText(label).width + 16 * dpr;
         ctx.fillStyle = info.color; ctx.fillRect(10 * dpr, (10 + 28 * k) * dpr, w, 24 * dpr);
-        ctx.fillStyle = "#081018"; ctx.fillText(label, 18 * dpr, (27 + 28 * k) * dpr);
+        ctx.fillStyle = "#fff"; ctx.fillText(label, 18 * dpr, (27 + 28 * k) * dpr);
       });
       requestAnimationFrame(draw);
     }
@@ -240,7 +241,7 @@
     const items = [];
     const seek = (t) => { video.currentTime = Math.max(0, t - 0.5); video.play().catch(() => {}); };
     [...result.events].sort((a, b) => a[0] - b[0]).forEach((ev) => {
-      const info = CLASS_INFO[ev[2]] || { color: "#ccc", name: ev[2] };
+      const info = CLASS_INFO[ev[2]] || { color: "#98a2b3", name: ev[2] };
       const it = html("div", "ev-item");
       it.innerHTML = `<span class="swatch" style="background:${info.color}"></span><span>${info.name}</span><span class="time">${fmt(ev[0])}–${fmt(ev[1])}</span>`;
       it.addEventListener("click", () => seek(ev[0]));
@@ -250,7 +251,7 @@
     wrap.append(stage, side);
     host.appendChild(wrap);
     const tl = timelineChart(host, result.events, duration, seek);
-    const rc = lineChart(host, result.risk || [], { title: "Accident risk — P(accident starts within 5 s)", duration, threshold: 0.5, color: "#ff9f43", onSeek: seek, events: result.events });
+    const rc = lineChart(host, result.risk || [], { title: "Accident risk — P(accident starts within 5 s)", duration, threshold: 0.5, color: "#ef6820", onSeek: seek, events: result.events });
     video.addEventListener("timeupdate", () => {
       const t = video.currentTime;
       tl.setTime(t); rc.setTime(t);

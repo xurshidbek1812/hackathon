@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Infinity · Traffic Event Detection</title>
 <meta name="description" content="Team Infinity — WIUT Hackathon 2026 Computer Vision track: traffic event detection and accident anticipation from a fixed CCTV camera.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -26,7 +29,7 @@
   <section class="hero">
     <div class="wrap">
       <p class="eyebrow">WIUT Hackathon 2026 · Computer Vision track</p>
-      <h1>Every traffic event on the road,<br>and a warning before the crash.</h1>
+      <h1>Every traffic event on the road,<br>and a warning <span>before the crash.</span></h1>
       <p class="lead">A fixed CCTV camera, 14 event classes, no labels. We detect and track every road user,
         turn trajectories into events with scene-aware rules, and score accident risk frame by frame
         using only the past.</p>
@@ -41,6 +44,7 @@
   <!-- ============================================================ APPROACH -->
   <section id="approach">
     <div class="wrap">
+      <p class="eyebrow">01 · Approach</p>
       <h2>Problem &amp; approach</h2>
       <p class="section-lead">Part A returns every event as <code>[start_sec, end_sec, label]</code>, matched at temporal
         IoU 0.3 / 0.5 / 0.7. Part B returns, at every frame, the probability that an accident starts within 5 s — using only frames already seen.</p>
@@ -73,21 +77,24 @@
 
       <div class="cards three">
         <article class="card">
-          <h3>1 · Detect &amp; track</h3>
+          <span class="step">1</span>
+          <h3>Detect &amp; track</h3>
           <p><b>YOLO11-m</b> (COCO, open weights) finds cars, buses, trucks, motorbikes, bicycles, people, animals and loose objects
             at 960 px, 10 frames per second (every 3rd frame of the 30 fps 4K video). Riders and people inside vehicles are suppressed so they never look like pedestrians.
             Our own ByteTrack-style tracker (two-stage IoU matching, constant-velocity prediction, timestamps not frame counts)
             links boxes into tracks; fragments of a parked vehicle are re-joined after occlusion.</p>
         </article>
         <article class="card">
-          <h3>2 · Trajectories in body units</h3>
+          <span class="step">2</span>
+          <h3>Trajectories in body units</h3>
           <p>We take the bottom-centre of each box as its ground point, smooth it, and measure speed in
             <em>body units per second</em> (pixels ÷ √(w·h)). Far and near cars get comparable thresholds without camera
             calibration. A <b>flow field</b> learned from the sample videos gives each road cell its usual driving
             direction and marks where vehicles routinely queue.</p>
         </article>
         <article class="card">
-          <h3>3 · Rules → segments</h3>
+          <span class="step">3</span>
+          <h3>Rules → segments</h3>
           <p>Each class is a small, testable rule on trajectories plus the scene layout (stop lines, crossings, solid lines,
             junction box) drawn by hand on a sample frame, since no <code>camera.md</code> came with the kit. Frame flags become segments; gaps are
             bridged, blips dropped and same-class overlaps merged, because boundaries are scored at IoU 0.7.</p>
@@ -107,6 +114,7 @@
   <!-- ============================================================ EDA -->
   <section id="eda" class="alt">
     <div class="wrap">
+      <p class="eyebrow">02 · Data</p>
       <h2>EDA of the sample videos</h2>
       <p class="section-lead">What the camera sees: resolution, frame rate, lighting, how many road users of each kind,
         where they drive and in which direction. These findings set the detector size, the frame stride, and the rules.</p>
@@ -117,6 +125,7 @@
   <!-- ============================================================ RESULTS -->
   <section id="results">
     <div class="wrap">
+      <p class="eyebrow">03 · Results</p>
       <h2>Results on the sample videos</h2>
       <p class="section-lead">Annotated playback rendered with our own tooling. Click any event on the timeline to jump to it.</p>
       <div id="results-content"><p class="placeholder">Results appear here after the sample videos are processed.</p></div>
@@ -126,6 +135,7 @@
   <!-- ============================================================ DASHBOARD -->
   <section id="dashboard" class="alt">
     <div class="wrap">
+      <p class="eyebrow">04 · Dashboard</p>
       <h2>Operator dashboard</h2>
       <p class="section-lead">The view a traffic centre would want: events per class, per hour of footage, and when they happen.</p>
       <div id="dashboard-content"><p class="placeholder">Dashboard appears when results are available.</p></div>
@@ -135,9 +145,11 @@
   <!-- ============================================================ DEMO -->
   <section id="demo">
     <div class="wrap">
+      <p class="eyebrow">05 · Try it</p>
       <h2>Live demo</h2>
-      <p class="section-lead">Upload an <b>.mp4 up to 2 minutes and 200 MB</b> from this camera (or any road camera).
-        The same code as our submission runs on CPU; expect roughly 1–3× the clip length.</p>
+      <p class="section-lead">Upload an <b>.mp4</b> from this camera (or any road camera). The same code as our
+        submission analyses it and returns the events, an annotated playback and the accident-risk curve.</p>
+      <div class="demo-box">
       <form id="upload-form" class="upload">
         <label class="drop" id="drop">
           <input type="file" id="file" accept="video/mp4" hidden>
@@ -146,12 +158,14 @@
         </label>
         <button class="btn primary" id="upload-btn" type="submit" disabled>Analyse video</button>
       </form>
+      <div class="limits" id="demo-limits"></div>
       <div id="demo-status" class="status" hidden>
         <div class="bar"><div id="demo-bar"></div></div>
         <p id="demo-msg">Uploading…</p>
       </div>
       <p id="demo-offline" class="notice" hidden>The demo backend is offline right now. Run it locally with
         <code>uvicorn demo.server:app --port 7860</code> and open <code>http://localhost:7860</code>.</p>
+      </div>
       <div id="demo-result"></div>
     </div>
   </section>
@@ -159,10 +173,11 @@
   <!-- ============================================================ REPORT -->
   <section id="report" class="alt">
     <div class="wrap narrow">
+      <p class="eyebrow">06 · Report</p>
       <h2>Technical report</h2>
       <div class="report">
         <h3>What we built</h3>
-        <p>A single-pass pipeline: YOLO11 detection on every second frame, our own ByteTrack-style tracker, smoothed
+        <p>A single-pass pipeline: YOLO11 detection at 10 frames per second, our own ByteTrack-style tracker, smoothed
           trajectories measured in body units, and one small rule per event class that combines trajectories with the
           fixed scene layout. Classes a COCO detector cannot see get pixel cues: signal state from the signal-head
           region, static foreground blobs against a median background (debris), and flickering fire-coloured regions
@@ -200,6 +215,7 @@
   <!-- ============================================================ TEAM -->
   <section id="team">
     <div class="wrap">
+      <p class="eyebrow">07 · Team</p>
       <h2>Team Infinity</h2>
       <div class="cards three" id="team-cards"></div>
     </div>
@@ -208,6 +224,7 @@
   <!-- ============================================================ LINKS -->
   <section id="links" class="alt">
     <div class="wrap">
+      <p class="eyebrow">08 · Links</p>
       <h2>Links</h2>
       <div class="links">
         <a class="link-card" href="https://github.com/xurshidbek1812/hackathon" target="_blank" rel="noopener"><b>Repository</b><span>github.com/xurshidbek1812/hackathon</span></a>
