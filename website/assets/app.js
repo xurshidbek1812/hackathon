@@ -242,9 +242,25 @@
 
     async function poll(id) {
       const t0 = performance.now();
+      let failures = 0;
       for (;;) {
         let s;
-        try { s = await getJSON(`${API}/api/jobs/${id}`); } catch (err) { setProgress(0, `Lost contact with the server: ${err.message}`); break; }
+        try {
+          const r = await fetch(`${API}/api/jobs/${id}`, { cache: "no-cache" });
+          if (r.status === 404) {
+            setProgress(0, "The server was restarted and this analysis was lost. Please upload the video again.");
+            break;
+          }
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          s = await r.json();
+          failures = 0;
+        } catch (err) {
+          // ride out short hiccups (busy laptop, flaky Wi-Fi) for about a minute before giving up
+          if (++failures > 30) { setProgress(0, `Lost contact with the server: ${err.message}`); break; }
+          msg.textContent = `Reconnecting to the server… (${failures})`;
+          await new Promise((res) => setTimeout(res, 2000));
+          continue;
+        }
         const elapsed = ((performance.now() - t0) / 1000).toFixed(0);
         if (s.status === "done") { setProgress(1, `Done in ${s.result.stats.total_seconds}s — ${s.result.events.length} events.`); showResult(id, s.result); break; }
         if (s.status === "error") { setProgress(0, s.message); break; }
