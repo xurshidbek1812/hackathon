@@ -46,6 +46,16 @@ JOBS_DIR = ROOT / ".demo_jobs"
 app = FastAPI(title="Team Infinity - traffic event detection demo")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+
+@app.middleware("http")
+async def revalidate_site_files(request, call_next):
+    """Make browsers re-check pages, scripts and data on every load, so an update
+    (e.g. new upload limits) is never hidden behind a stale cached copy."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/") and not request.url.path.endswith(".mp4"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 jobs: dict[str, dict] = {}
 work: queue.Queue[str] = queue.Queue()
 lock = threading.Lock()
