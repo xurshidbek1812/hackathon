@@ -22,6 +22,15 @@
 
   const TEAM = [
     {
+      name: "Suxrob Muminov", role: "Team leader",
+      did: ["Managed the team", "Coordinated the work and the submission"],
+      links: {
+        GitHub: "https://github.com/suxrobmuminov2007-creator",
+        LinkedIn: "https://www.linkedin.com/in/suxrob-muminov-b3a8a0395/",
+        Portfolio: "https://github.com/suxrobmuminov2007-creator",
+      },
+    },
+    {
       name: "Xurshidbek Bekchonov", role: "Website developer",
       did: ["Built the team website", "Live demo page and upload flow", "Results, EDA and dashboard views"],
       links: {
@@ -35,8 +44,7 @@
         { name: "Library management", about: "library management app (JavaScript)", url: "https://github.com/xurshidbek1812/Library-management" },
       ],
     },
-    { name: "Member 2", role: "Data & modelling", did: ["Dev-set annotation", "EDA", "Accident / near-miss tuning"], links: {} },
-    { name: "Member 3", role: "CV pipeline", did: ["Detection & tracking", "Event rules", "Evaluation"], links: {} },
+    { name: "Member 3", role: "CV pipeline & data", did: ["Detection & tracking", "Event rules", "Dev-set annotation & evaluation"], links: {} },
   ];
 
   async function getJSON(url) {
