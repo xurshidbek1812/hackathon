@@ -7,34 +7,53 @@ from ..segments import Event, mask_to_segments
 from .common import Context, fill_short_gaps, heading_change_window, runs, signed_side
 
 
+BUS = 5          # COCO class id: buses stop at bus stops by design
+
+
 def stopped_vehicle(ctx: Context) -> list[Event]:
     rp, mp = ctx.rp, ctx.mp
-    events = []
+    stops = []      # [start, end, ground point, size, track ids]
     for tr in ctx.cars:
-        still = fill_short_gaps(tr.t, tr.speed < mp.stationary_speed, 1.0)
+        if tr.coco_cls == BUS:
+            continue
+        still = fill_short_gaps(tr.t, tr.speed < mp.stationary_speed, 2.0)
         for a, b in runs(still):
             t0, t1 = float(tr.t[a]), float(tr.t[b])
-            if t1 - t0 < rp.stopped_min_sec:
-                continue
+            if t1 - t0 < 3.0:
+                continue            # shorter pieces of a long stop are joined below
             p = np.median(tr.anchor[a:b + 1], axis=0)
-            if not ctx.scene.on_road(p[None])[0]:
-                continue
-            if _is_queued(ctx, tr, a, b, p):
+            if not ctx.scene.on_road(p[None])[0] or _is_queued(ctx, tr, a, b, p):
                 continue
             end = ctx.track_end(tr) if b == len(tr.t) - 1 else t1
-            score = min(1.0, 0.5 + (t1 - t0) / 60)
-            events.append(Event(t0, end, "stopped_vehicle", score, [tr.id]))
-    return events
+            stops.append([t0, end, p, float(np.median(tr.scale[a:b + 1])), [tr.id]])
+
+    # Passing traffic hides a parked car and splits it into several tracks: join
+    # stops at the same spot that follow each other closely.
+    merged: list[list] = []
+    for stop in sorted(stops, key=lambda x: x[0]):
+        for m in merged:
+            same_spot = np.linalg.norm(stop[2] - m[2]) / m[3] < 0.5
+            if same_spot and stop[0] - m[1] <= rp.stop_join_gap_sec:
+                m[1] = max(m[1], stop[1])
+                m[4] += stop[4]
+                break
+        else:
+            merged.append(stop)
+    return [Event(t0, end, "stopped_vehicle", min(1.0, 0.5 + (end - t0) / 60), ids)
+            for t0, end, _, _, ids in merged if end - t0 >= rp.stopped_min_sec]
 
 
 def _is_queued(ctx: Context, tr, a: int, b: int, p: np.ndarray) -> bool:
-    """A stop that is part of normal signal queueing, not a breakdown/illegal stop."""
+    """A stop that is part of normal traffic (a signal queue or a jam), not a
+    breakdown or an illegal stop."""
     rp = ctx.rp
     t0, t1 = tr.t[a], tr.t[b]
-    dur = t1 - t0
-    released_before_end = t1 < ctx.duration - 1.0
-    # 1) stopped where vehicles routinely queue, and left again within a signal cycle
-    if released_before_end and dur < 150 and ctx.flow.is_queue_zone(p[None])[0]:
+    # released = it was seen driving off; a track that just ends (occluded, or the
+    # video ends) while the vehicle stands still says nothing about a queue
+    after = (tr.t > t1) & (tr.t <= t1 + 3.0)
+    released_before_end = bool((tr.speed[after] > ctx.mp.moving_speed).any()) and t1 < ctx.duration - 1.0
+    # 1) waiting on the approach to a stop line, for no longer than a signal cycle or two
+    if t1 - t0 < 150 and _on_signal_approach(ctx, tr, a, p):
         return True
     # 2) released together with neighbours: the whole queue moved off at once
     together = 0
@@ -48,11 +67,40 @@ def _is_queued(ctx: Context, tr, a: int, b: int, p: np.ndarray) -> bool:
         if not near:
             continue
         o_still = other.speed < ctx.mp.stationary_speed
-        # the neighbour starts moving within the release window of our own start
+        # it waited alongside us for most of our stop ...
+        during = (other.t >= t0) & (other.t <= t1)
+        waited_with_us = during.sum() >= 3 and o_still[during].mean() > 0.5 and             (other.t[during][-1] - other.t[during][0]) > 0.5 * (t1 - t0)
+        # ... and moved off within the release window of our own start
         win = (other.t > t1 - rp.queue_release_window_sec) & (other.t < t1 + rp.queue_release_window_sec)
-        if released_before_end and o_still[win].any() and (~o_still[win]).any():
+        if released_before_end and waited_with_us and o_still[win].any() and (~o_still[win]).any():
             together += 1
     return together >= 1
+
+
+def _on_signal_approach(ctx: Context, tr, a: int, p: np.ndarray, max_bodies: float = 25.0) -> bool:
+    """Is the stopped vehicle heading toward a stop line and still before it?
+    Only such stops can be a queue at a signal; a lane that leaves the junction
+    (e.g. past the bus stop) never is."""
+    heading = ctx.flow.expected_direction(p[None])[0]
+    if np.isnan(heading[0]):            # no learned lane direction here: use its own approach
+        before = (tr.t >= tr.t[a] - 2.0) & (tr.t < tr.t[a]) & (tr.speed > ctx.mp.moving_speed)
+        if not before.any():
+            return False
+        heading = tr.unit_dir()[before].mean(axis=0)
+    size = float(np.median(tr.scale))
+    for sl in ctx.scene.stop_lines:
+        if heading @ sl.approach < 0.3:
+            continue
+        # signed distance to the (infinite) stop line along the approach direction
+        a_pt, b_pt = sl.line
+        normal = np.array([-(b_pt - a_pt)[1], (b_pt - a_pt)[0]], float)
+        normal /= np.linalg.norm(normal)
+        if normal @ sl.approach < 0:
+            normal = -normal
+        depth = float((p - a_pt) @ normal) / size
+        if -max_bodies <= depth <= 1.0:
+            return True
+    return False
 
 
 def congestion(ctx: Context) -> list[Event]:

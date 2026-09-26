@@ -45,6 +45,7 @@ class MotionParams:
 class RuleParams:
     # stopped_vehicle
     stopped_min_sec: float = 10.0
+    stop_join_gap_sec: float = 10.0         # join stops of one parked car split by occlusion
     queue_release_window_sec: float = 4.0
     queue_neighbor_dist: float = 4.0        # body units
     # congestion

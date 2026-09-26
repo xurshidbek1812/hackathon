@@ -1,0 +1,43 @@
+{
+ "C3896.MP4": {
+  "duration": 340.34,
+  "fps": 29.97,
+  "events": [
+   [
+    0,
+    296.13,
+    "stopped_vehicle"
+   ],
+   [
+    78.83,
+    111.47,
+    "red_light"
+   ],
+   [
+    104.21,
+    131.99,
+    "jaywalking"
+   ],
+   [
+    130.07,
+    132.1,
+    "solid_line_crossing"
+   ],
+   [
+    132.03,
+    144.84,
+    "jaywalking"
+   ],
+   [
+    179.65,
+    180.41,
+    "failure_to_yield"
+   ],
+   [
+    190.76,
+    192.72,
+    "jaywalking"
+   ]
+  ]
+ }
+}

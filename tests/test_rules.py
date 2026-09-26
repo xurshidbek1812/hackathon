@@ -186,3 +186,17 @@ def test_stop_line_with_inferred_phase_ends_when_queue_moves():
                                          line_path((610, 520), (1100, 520), n(3))]))
     evs = stop_line(make_context(waiting + [over], scene=scene, duration=60))
     assert len(evs) == 1 and evs[0].track_ids == [2] and abs(evs[0].end - 23.0) < 0.5
+
+
+def test_red_light_runner_that_pauses_before_entering():
+    """Crosses on red, stops just past the line, then drives into the junction while
+    the others are still waiting: red_light (not stop_line)."""
+    scene = _unsignalled_scene()
+    waiting = [_waiting_car(1, 350, 30), _waiting_car(4, 420, 30)]
+    path = np.concatenate([line_path((200, 520), (630, 520), n(4)),       # crosses the line at ~t=10.6
+                           np.repeat([[630, 520]], n(5), axis=0),          # pauses 5 s past the line
+                           line_path((630, 520), (1100, 520), n(3))])      # enters the junction on red
+    runner = make_track(2, path, t0=7.0)
+    ctx = make_context(waiting + [runner], scene=scene, duration=60)
+    assert [e.track_ids for e in red_light(ctx)] == [[2]]
+    assert stop_line(ctx) == []

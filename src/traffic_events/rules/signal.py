@@ -6,7 +6,8 @@ The phase of a stop line comes from one of two sources:
                region in scene.json): red/green read from its pixels.
 * QueuePhase - the head faces away from the camera. Red is inferred from the
                traffic itself: other vehicles standing still right at the
-               stop line for a few seconds only do that on red. Green is when
+               stop line (two for 5 s, or one for 10 s) while nothing else
+               crosses it only do that on red. Green is when
                that waiting queue moves off.
 """
 from __future__ import annotations
@@ -45,8 +46,9 @@ class LampPhase:
 
 
 class QueuePhase:
-    WAIT_SEC = 5.0            # standing at the line at least this long
-    MIN_WAITING = 2           # vehicles that must be waiting
+    WAIT_SEC = 5.0            # standing at the line at least this long ...
+    MIN_WAITING = 2           # ... by this many vehicles,
+    LONE_WAIT_SEC = 10.0      # or a single vehicle waiting at least this long
     ZONE = (-2.0, 0.3)        # front within 2 bodies before the line (or touching it)
     FLOW_WINDOW = (4.0, 2.0)  # no other crossing this long before / after (s): traffic is flowing = green
 
@@ -74,7 +76,9 @@ class QueuePhase:
         return any(tid != exclude and t - before <= tc <= t + after for tid, tc in self.crossings)
 
     def is_red(self, t: float, exclude: int | None = None) -> bool:
-        return len(self._waiting(t, exclude)) >= self.MIN_WAITING and not self._flowing(t, exclude)
+        waiting = self._waiting(t, exclude)
+        enough = len(waiting) >= self.MIN_WAITING or any(t - s >= self.LONE_WAIT_SEC for _, s, _ in waiting)
+        return enough and not self._flowing(t, exclude)
 
     def next_green(self, t: float, exclude: int | None = None) -> float | None:
         ends = [e for _, _, e in self._waiting(t, exclude)]
@@ -100,35 +104,41 @@ def red_light(ctx: Context) -> list[Event]:
                 if not heading_ok[max(0, k - 2):k + 1].any():
                     continue
                 tc = float(tr.t[k])
-                if not phase.is_red(tc, exclude=tr.id) or not _drives_on(ctx, tr, k, depth):
+                if not phase.is_red(tc, exclude=tr.id):
+                    continue
+                # it may pause after crossing; what counts is entering the junction before green
+                entry = _entry_time(ctx, tr, k, depth)
+                green = phase.next_green(tc, exclude=tr.id)
+                if entry is None or (green is not None and entry > green + 0.5):
                     continue
                 events.append(Event(tc, _leave_time(ctx, tr, k), "red_light", 0.8, [tr.id]))
                 break
     return events
 
 
-def _drives_on(ctx: Context, tr, k: int, depth: np.ndarray, min_depth: float = 2.5,
-               horizon: float = 5.0) -> bool:
-    """After crossing, does the vehicle continue into the junction (red_light)
-    rather than stopping just past the line (stop_line)?"""
-    m = (tr.t >= tr.t[k]) & (tr.t <= tr.t[k] + horizon)
-    if ctx.scene.intersection is not None and ctx.scene.inside(ctx.scene.intersection, tr.anchor[m]).any():
-        return True
-    d = depth[m]
-    # past the end of the line segment (NaN) after crossing also means it drove on
-    return bool(np.nanmax(np.where(np.isnan(d), min_depth + 1, d)) > min_depth)
+def _entry_time(ctx: Context, tr, k: int, depth: np.ndarray, min_depth: float = 2.5) -> float | None:
+    """When, after crossing the stop line at sample k, the vehicle enters the
+    junction (inside the junction box, or well past the line); None if it never does."""
+    after = np.arange(k, len(tr.t))
+    entered = np.nan_to_num(depth[after], nan=min_depth + 1) > min_depth   # NaN: beyond the line's ends
+    if ctx.scene.intersection is not None:
+        entered |= ctx.scene.inside(ctx.scene.intersection, tr.anchor[after])
+    hit = np.flatnonzero(entered)
+    return float(tr.t[after[hit[0]]]) if len(hit) else None
 
 
 def _leave_time(ctx: Context, tr, k: int) -> float:
+    """End of a red-light event: the vehicle leaves the junction box, or the frame."""
     inter = ctx.scene.intersection
-    if inter is not None:
-        inside = ctx.scene.inside(inter, tr.anchor[k:])
-        entered = np.flatnonzero(inside)
-        if len(entered):
-            out = np.flatnonzero(~inside[entered[0]:])
-            if len(out):
-                return float(tr.t[k + entered[0] + out[0]])
-    return min(ctx.track_end(tr), float(tr.t[k]) + 15.0)
+    if inter is None:
+        return min(ctx.track_end(tr), float(tr.t[k]) + 15.0)
+    inside = ctx.scene.inside(inter, tr.anchor[k:])
+    entered = np.flatnonzero(inside)
+    if len(entered):
+        out = np.flatnonzero(~inside[entered[0]:])
+        if len(out):
+            return float(tr.t[k + entered[0] + out[0]])
+    return ctx.track_end(tr)
 
 
 def stop_line(ctx: Context) -> list[Event]:
@@ -153,6 +163,10 @@ def stop_line(ctx: Context) -> list[Event]:
                 if not phase.is_red(tq, exclude=tr.id):
                     continue
                 green = phase.next_green(tq, exclude=tr.id)
+                # a vehicle that goes on into the junction while still red is red_light instead
+                entry = _entry_time(ctx, tr, i0, depth)
+                if entry is not None and (green is None or entry < green - 0.5):
+                    continue
                 end = green if green is not None else ctx.track_end(tr)
                 if end - t0 >= rp.min_event_sec:
                     events.append(Event(t0, end, "stop_line", 0.7, [tr.id]))
