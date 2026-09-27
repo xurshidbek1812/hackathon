@@ -139,18 +139,37 @@ def accident(ctx: Context) -> list[Event]:
             stay = t[i1] - t[i0] >= rp.after_contact_slow_sec and (
                 (a.speed[ia[i0:i1 + 1]] < 0.3).mean() > 0.6 or (b.speed[ib[i0:i1 + 1]] < 0.3).mean() > 0.6)
             ped = PERSON in (a.category, b.category)
-            vehicle = b if a.category == PERSON else a
-            if ped and vehicle.speed[vehicle.at(tc)] < 1.0:
-                continue                      # people walk past or board standing vehicles
-            abrupt = drop >= rp.hard_decel or turn >= rp.swerve_deg or fall
-            if closing < 1.0 or not abrupt or not (stay or fall):
-                continue                      # queues overlap but never close fast; crashes end at rest
+            if ped:
+                vehicle = b if a.category == PERSON else a
+                # a car hitting a person moves and brakes hard; a box that only looks like a
+                # fall is usually the person being hidden by a passing car
+                if vehicle.speed[vehicle.at(tc)] < 1.0 or not fall or                         speed_drop(vehicle, tc) < 0.75 * rp.hard_decel:
+                    continue
+            else:
+                abrupt = drop >= rp.hard_decel or turn >= rp.swerve_deg
+                if closing < 1.0 or not abrupt or not stay:
+                    continue                  # queues overlap but never close fast; crashes end at rest
+                if not _pushed_if_standing(a, b, tc):
+                    continue                  # rolling up behind a standing car is not an impact
             evidence = (0.35 * min(closing / 1.5, 1.0) + 0.3 * min(drop / rp.hard_decel, 1.0)
                         + 0.15 * min(turn / rp.swerve_deg, 1.0) + 0.25 * stay + 0.4 * fall)
             end = min(max(_settle_time(ctx, a, tc), _settle_time(ctx, b, tc)), tc + 60.0)
             events.append(Event(tc, max(end, tc + 1.0), "accident", min(1.0, evidence), [a.id, b.id]))
             break
     return events
+
+
+def _pushed_if_standing(a: Track, b: Track, tc: float, push_bodies: float = 0.3) -> bool:
+    """If one vehicle stood still before the contact, it must be shoved by it."""
+    for tr in (a, b):
+        before = _window(tr, tc - 1.0, tc)
+        after = _window(tr, tc, tc + 1.5)
+        if before.any() and after.any() and tr.speed[before].mean() < 0.3:
+            i0, i1 = np.flatnonzero(after)[[0, -1]]
+            moved = np.linalg.norm(tr.anchor[i1] - tr.anchor[i0]) / tr.scale[i0]
+            if moved < push_bodies:
+                return False
+    return True
 
 
 def _evasion_onset(tr: Track, tk: float, rp) -> float | None:

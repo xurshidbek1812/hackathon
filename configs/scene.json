@@ -1,5 +1,5 @@
 {
- "_doc": "Scene layout for the competition camera (C3896 view: a 4-arm junction, main road with a median running into the distance, cross street on the right, diagonal crosswalk bottom-left). No camera.md came with the starter kit, so this was drawn from sample frames. Coordinates normalised [x, y]. The main approach's signal heads face away from the camera, so its stop line has signal=null and the phase is inferred from the waiting queue (rules/signal.py QueuePhase).",
+ "_doc": "Scene layout for the competition camera (C3896 view: a 4-arm junction, main road with a median running into the distance, cross street on the right, diagonal crosswalk bottom-left). No camera.md came with the starter kit, so this was drawn from sample frames. Coordinates normalised [x, y]. The main approach's signal heads face away from the camera, so its stop line has signal=null and the phase is inferred from the waiting queue (rules/signal.py QueuePhase). solid_lines: the three lane dividers of the main approach are dashed up the road and solid only from the signal gantry to the stop line (found with a Hough transform on a car-free median frame). u_turn_zone: around the median nose, the only place a vehicle can turn back.",
  "road": [
   [
    0.0656,
@@ -208,7 +208,38 @@
  ],
  "lanes": [],
  "carriageways": [],
- "solid_lines": [],
+ "solid_lines": [
+  [
+   [
+    0.201,
+    0.376
+   ],
+   [
+    0.287,
+    0.46
+   ]
+  ],
+  [
+   [
+    0.268,
+    0.372
+   ],
+   [
+    0.356,
+    0.449
+   ]
+  ],
+  [
+   [
+    0.336,
+    0.369
+   ],
+   [
+    0.423,
+    0.436
+   ]
+  ]
+ ],
  "stop_lines": [
   {
    "name": "main_approach",
@@ -267,5 +298,23 @@
  "zones": {},
  "prohibited_turns": [],
  "u_turn_allowed": [],
- "enabled_classes": null
+ "enabled_classes": null,
+ "u_turn_zone": [
+  [
+   0.55,
+   0.42
+  ],
+  [
+   0.72,
+   0.42
+  ],
+  [
+   0.73,
+   0.56
+  ],
+  [
+   0.55,
+   0.57
+  ]
+ ]
 }

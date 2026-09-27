@@ -57,6 +57,7 @@ class Scene:
     zones: dict[str, np.ndarray] = field(default_factory=dict)
     prohibited_turns: list[tuple[str, str]] = field(default_factory=list)
     u_turn_allowed: list[np.ndarray] = field(default_factory=list)
+    u_turn_zone: np.ndarray | None = None          # where a U-turn is physically possible
     enabled_classes: list[str] | None = None
     _road_mask: np.ndarray | None = None
 
@@ -160,5 +161,7 @@ def load_scene(width: int, height: int, path: str | Path | None = None) -> Scene
     scene.zones = {k: P(v) for k, v in (cfg.get("zones") or {}).items()}
     scene.prohibited_turns = [tuple(p) for p in cfg.get("prohibited_turns") or []]
     scene.u_turn_allowed = [P(p) for p in cfg.get("u_turn_allowed") or []]
+    if cfg.get("u_turn_zone"):
+        scene.u_turn_zone = P(cfg["u_turn_zone"])
     scene.enabled_classes = cfg.get("enabled_classes")
     return scene

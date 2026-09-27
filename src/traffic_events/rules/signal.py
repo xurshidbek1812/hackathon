@@ -151,8 +151,8 @@ def stop_line(ctx: Context) -> list[Event]:
             for i0, i1 in runs(still):
                 if tr.t[i1] - tr.t[i0] < 2.0:
                     continue
-                # stopped with its front just past the line, not inside the junction
-                if not (0.0 < depth[i0] <= 2.5):
+                # stopped with its front clearly past the line (not just touching it) but not in the junction
+                if not (0.5 <= depth[i0] <= 2.5):
                     continue
                 if ctx.scene.intersection is not None and \
                         ctx.scene.inside(ctx.scene.intersection, tr.anchor[i0:i0 + 1])[0]:

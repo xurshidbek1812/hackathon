@@ -190,6 +190,8 @@ def illegal_u_turn(ctx: Context) -> list[Event]:
         mid = tr.anchor[(found[0] + found[1]) // 2][None]
         if any(ctx.scene.inside(p, mid)[0] for p in ctx.scene.u_turn_allowed):
             continue
+        if ctx.scene.u_turn_zone is not None and not ctx.scene.inside(ctx.scene.u_turn_zone, mid)[0]:
+            continue            # the apex is somewhere a U-turn cannot happen: two vehicles stitched together
         events.append(Event(start, end, "illegal_u_turn", 0.7, [tr.id]))
     return events
 

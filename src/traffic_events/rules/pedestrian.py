@@ -21,38 +21,49 @@ def jaywalking(ctx: Context) -> list[Event]:
     return events
 
 
-def failure_to_yield(ctx: Context, near_bodies: float = 3.0) -> list[Event]:
-    """A vehicle drives through a crossing while a pedestrian is on it close to
-    the vehicle's path. Pedestrians far along a long crossing, or waiting on the
-    kerb, are not in conflict and do not count."""
-    sc, rp = ctx.scene, ctx.rp
+def failure_to_yield(ctx: Context, lateral_bodies: float = 1.5) -> list[Event]:
+    """A vehicle drives through a crossing while a pedestrian on it is in the
+    vehicle's way: close to its path, ahead of or beside it (not already passed),
+    and standing in the path or walking into it (not walking away). Pedestrians
+    waiting on the kerb or far along a long crossing are not in conflict."""
+    sc = ctx.scene
     if not sc.crossings:
         return []
     events = []
     for crossing in sc.crossings:
-        # (t, x, y) of pedestrians on this crossing and off the kerb (people waiting
-        # at the crossing's ends are not in the vehicle's way)
-        on = []
+        # pedestrian samples on this crossing and off the kerb: t, x, y, vx, vy
+        rows = []
         for p in ctx.persons:
             height = float(np.median(p.box[:, 3] - p.box[:, 1]))
             m = sc.inside(crossing, p.anchor, -0.15 * height) & sc.on_road(p.anchor)
-            on.extend(np.column_stack([p.t[m], p.anchor[m]]).tolist())
-        if not on:
+            rows.append(np.column_stack([p.t[m], p.anchor[m], p.vel[m]]))
+        peds = np.concatenate(rows) if rows else np.zeros((0, 5))
+        if not len(peds):
             continue
-        on = np.asarray(on)
-        on = on[np.argsort(on[:, 0])]
+        peds = peds[np.argsort(peds[:, 0])]
         for v in ctx.vehicles:
             inside = sc.inside(crossing, v.anchor)
             for s, e in mask_to_segments(v.t, inside, min_dur=0.2, max_gap=0.5):
                 m = (v.t >= s) & (v.t <= e)
                 if v.speed[m].mean() < 0.3:          # waiting vehicle, not driving through
                     continue
-                lo, hi = np.searchsorted(on[:, 0], [s, e + 1e-6])
-                if hi <= lo:
-                    continue
-                peds = on[lo:hi]
-                idx = np.clip(np.searchsorted(v.t, peds[:, 0]), 0, len(v.t) - 1)
-                gap = np.linalg.norm(peds[:, 1:] - v.anchor[idx], axis=1) / v.scale[idx]
-                if gap.min() <= near_bodies:
+                lo, hi = np.searchsorted(peds[:, 0], [s, e + 1e-6])
+                if hi > lo and _in_the_way(v, peds[lo:hi], lateral_bodies):
                     events.append(Event(s, e, "failure_to_yield", 0.7, [v.id]))
     return events
+
+
+def _in_the_way(v, peds: np.ndarray, lateral_bodies: float) -> bool:
+    idx = np.clip(np.searchsorted(v.t, peds[:, 0]), 0, len(v.t) - 1)
+    heading = v.unit_dir()[idx]
+    size = v.scale[idx]
+    rel = peds[:, 1:3] - v.anchor[idx]
+    along = np.einsum("ij,ij->i", rel, heading) / size            # + ahead, - behind
+    side = heading[:, 0] * rel[:, 1] - heading[:, 1] * rel[:, 0]    # signed lateral offset (px)
+    lateral = np.abs(side) / size
+    # velocity component toward the path (+ = walking into the vehicle's way)
+    ped_v = peds[:, 3:5]
+    toward = -np.sign(side) * (heading[:, 0] * ped_v[:, 1] - heading[:, 1] * ped_v[:, 0]) / size
+    in_path = lateral <= 0.7
+    walking_in = (lateral <= lateral_bodies) & (toward > 0.2)
+    return bool(((along > -0.5) & (along < 4.0) & (in_path | walking_in)).any())
