@@ -152,7 +152,7 @@ def stop_line(ctx: Context) -> list[Event]:
                 if tr.t[i1] - tr.t[i0] < QueuePhase.WAIT_SEC:      # too short to judge the phase
                     continue
                 # stopped with its front clearly past the line (not just touching it) but not in the junction
-                if not (0.5 <= depth[i0] <= 2.5):
+                if not (0.6 <= depth[i0] <= 2.5):
                     continue
                 if ctx.scene.intersection is not None and \
                         ctx.scene.inside(ctx.scene.intersection, tr.anchor[i0:i0 + 1])[0]:

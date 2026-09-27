@@ -109,8 +109,8 @@ first frame it receives (causal). With too few matches it falls back to the refe
 **Dev set.** The team labelled the sample videos with `website/tools/labeler.html` following the task's
 start/end conventions (`dev_labels/team_labels.json`; `scripts/normalize_labels.py` merges simultaneous
 same-class events as the organisers' annotations do → `dev_labels/ground_truth.json`). Score A with the
-official `evaluate.py` on C3896 + C3897 + C3902 went from **0.04** to **0.42** (red_light 1.00, stopped_vehicle 0.73,
-stop_line 0.67, jaywalking 0.26, solid_line_crossing 0.20, failure_to_yield 0.06). Three videos are a small dev set, so
+official `evaluate.py` on all four samples went from **0.04** to **0.42** (red_light 1.00, stopped_vehicle 0.78,
+stop_line 0.67, jaywalking 0.31, solid_line_crossing 0.17, failure_to_yield 0.05). Four videos are a small dev set, so
 only fixes that follow from a traffic rule were kept; parameter sweeps that won by one event were rejected. What the
 labels taught us:
 
@@ -122,7 +122,7 @@ labels taught us:
 | false accidents: a car rolling up behind a standing truck, a pedestrian hidden by a passing car | a standing vehicle must be shoved by the impact; pedestrian contact needs a fall **and** hard braking |
 | false U-turns from two vehicles stitched together | U-turn apex must be at the median nose (`u_turn_zone`) |
 | pedestrians stepping off the islands | islands count as footway for jaywalking |
-| a motorcycle waiting over the stop line on red was missed | stop_line applies to every vehicle, not only cars; the stop must last ≥ 5 s (long enough to judge the phase) |
+| a motorcycle waiting over the stop line on red was missed | stop_line applies to every vehicle, not only cars; the front must be clearly over the line (≥ 0.6 body units) and the stop last ≥ 5 s (long enough to judge the phase) |
 | people crossing in a stream were labelled as one jaywalking episode | jaywalking events less than 8 s apart are joined (weak evidence: 1 s → 0.314, 2–5 s → 0.311, 8 s → 0.321) |
 
 **Before the labels**, every rule was checked by rendering its candidate events (tracks drawn on the frame) and

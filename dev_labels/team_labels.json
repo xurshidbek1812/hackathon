@@ -241,5 +241,36 @@
     "jaywalking"
    ]
   ]
+ },
+ "C3905.MP4": {
+  "duration": 127.63,
+  "fps": 29.97,
+  "events": [
+   [
+    0,
+    37.26,
+    "stopped_vehicle"
+   ],
+   [
+    0,
+    85.44,
+    "stopped_vehicle"
+   ],
+   [
+    31.93,
+    127.63,
+    "stopped_vehicle"
+   ],
+   [
+    43.13,
+    44.88,
+    "solid_line_crossing"
+   ],
+   [
+    66.99,
+    76.5,
+    "jaywalking"
+   ]
+  ]
  }
 }

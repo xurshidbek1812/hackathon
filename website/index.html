@@ -186,18 +186,19 @@
           score with fast rise and slow decay.</p>
         <h3>How we measured</h3>
         <p>We labelled the sample videos ourselves with our <a href="tools/labeler.html">labeling tool</a>, following the task's
-          start/end conventions, and scored every change with the official <code>evaluate.py</code>. On the two videos labelled
-          first (C3896, C3897), Score&nbsp;A went from <b>0.04</b> for the first version to <b>0.31</b>:</p>
+          start/end conventions, and scored every change with the official <code>evaluate.py</code>. On all four sample
+          videos (C3896, C3897, C3902, C3905), Score&nbsp;A went from <b>0.04</b> for the first version to <b>0.42</b>:</p>
         <div class="table-wrap"><table>
           <thead><tr><th>Class</th><th>Mean F1 (IoU 0.3 / 0.5 / 0.7)</th><th>What changed it</th></tr></thead>
           <tbody>
             <tr><td><b>Red-light running</b></td><td>1.00</td><td>runner may pause past the line; event ends when it leaves the junction or the frame</td></tr>
-            <tr><td><b>Stopped vehicle</b></td><td>0.67</td><td>only stops on a signal approach count as queuing; a parked car split by occlusion is re-joined</td></tr>
-            <tr><td><b>Solid-line crossing</b></td><td>0.29</td><td>lane dividers solid only from the gantry to the stop line</td></tr>
-            <tr><td><b>Pedestrian on roadway</b></td><td>0.23</td><td>margins scale with body height; islands count as footway</td></tr>
-            <tr><td><b>Not yielding to a pedestrian</b></td><td>0.00</td><td>still the weakest class: short events, hard to time</td></tr>
+            <tr><td><b>Stopped vehicle</b></td><td>0.78</td><td>only stops on a signal approach count as queuing; a parked car split by occlusion is re-joined</td></tr>
+            <tr><td><b>Stop-line violation</b></td><td>0.67</td><td>applies to motorcycles too; front clearly over the line and a stop of at least 5&nbsp;s</td></tr>
+            <tr><td><b>Pedestrian on roadway</b></td><td>0.31</td><td>margins scale with body height; islands count as footway; a stream of crossers is one episode</td></tr>
+            <tr><td><b>Solid-line crossing</b></td><td>0.17</td><td>lane dividers solid only from the gantry to the stop line</td></tr>
+            <tr><td><b>Not yielding to a pedestrian</b></td><td>0.05</td><td>still the weakest class: short events, hard to time</td></tr>
           </tbody></table></div>
-        <p class="small">Classes we predicted but that were never labelled (accident, U-turn, stop line) each add a zero to the macro average, so most of the gain came from removing those false alarms.</p>
+        <p class="small">Classes we predicted but that were never labelled (accident, U-turn) each add a zero to the macro average, so much of the gain came from removing those false alarms. Four videos are a small dev set: we kept only fixes that follow from a traffic rule, not sweeps that won by a single event.</p>
         <h3>What worked</h3>
         <ul>
           <li><b>Body-unit speeds.</b> Dividing pixel motion by box size made one set of thresholds work across the depth of the image.</li>
