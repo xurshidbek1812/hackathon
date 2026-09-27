@@ -64,10 +64,16 @@ def main():
     api.create_repo(args.space, repo_type="space", space_sdk="static" if args.static else "docker", exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         (stage_static if args.static else stage)(Path(tmp))
-        api.upload_folder(folder_path=tmp, repo_id=args.space, repo_type="space",
-                          commit_message="Deploy website and live demo")
+        # switching modes: drop the other layout's files (static puts the site at the root)
+        if args.static:
+            stale = ["website/*", "src/*", "configs/*", "demo/*", "weights/*", "Dockerfile", "requirements*.txt"]
+        else:
+            stale = ["index.html", "config.js", "assets/*", "data/*", "tools/*"]
+        api.upload_folder(folder_path=tmp, repo_id=args.space, repo_type="space", delete_patterns=stale,
+                          commit_message="Deploy website" + ("" if args.static else " and live demo"))
     print(f"https://huggingface.co/spaces/{args.space}")
-    print(f"https://{args.space.replace('/', '-').replace('_', '-').lower()}.hf.space")
+    host = args.space.replace("/", "-").replace("_", "-").lower()
+    print(f"https://{host}.static.hf.space" if args.static else f"https://{host}.hf.space")
 
 
 if __name__ == "__main__":

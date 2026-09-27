@@ -2,7 +2,7 @@
 
 Traffic event detection (Part A) and causal accident anticipation (Part B) for one fixed CCTV road camera.
 
-**Website:** https://xurshidbek1812-infinity-traffic.static.hf.space (approach, EDA, results on the four samples, report, team)
+**Website + live demo:** https://xurshidbek1812-infinity-traffic.hf.space (approach, EDA, results on the four samples, upload-a-video demo, report, team)
 
 ```bash
 pip install -r requirements.txt
@@ -180,12 +180,12 @@ python evaluate.py --pred predictions_samples.json --gt dev_labels/ground_truth.
 pytest -q
 ```
 
-Live demo (upload a video, get events, annotated playback and the risk curve): `uvicorn demo.server:app --port 7860`,
-then open http://localhost:7860. The public website is a free static Hugging Face Space
-(`python demo/deploy_hf_space.py --space <user>/<name> --token <token> --static`); the backend needs a server, so
-online its demo box points here. On a paid Docker Space the same script (without `--static`) publishes site and
-backend together; with no GPU it uses `DEMO_PROFILE=cpu`: the upload is decoded once into a 960 px copy and analysed
-with YOLO11-s at 5 frames per second (limits 2 min, 2.5 GB).
+Live demo (upload a video, get events, annotated playback and the risk curve): online at the website above, a
+Hugging Face Docker Space published with `python demo/deploy_hf_space.py --space <user>/<name> --token <token>`
+(`--static` publishes the website alone on a free static Space). That host has no GPU, so it uses
+`DEMO_PROFILE=cpu`: the upload is decoded once into a 960 px copy and analysed with YOLO11-s at 5 frames per second
+(limits 2 min, 2.5 GB; a 20 s clip takes about 1.5 min). Locally: `uvicorn demo.server:app --port 7860`, then open
+http://localhost:7860.
 
 ## Determinism
 
