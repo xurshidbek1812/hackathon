@@ -135,11 +135,19 @@ class Scene:
         return self.enabled_classes is None or label in self.enabled_classes
 
 
-def load_scene(width: int, height: int, path: str | Path | None = None) -> Scene:
+def load_scene(width: int, height: int, path: str | Path | None = None, view=None) -> Scene:
+    """Scene in this video's pixels. `view` (registration.ViewTransform) carries
+    the reference-view coordinates of the config into this video's view."""
     path = Path(path) if path else CONFIG_DIR / "scene.json"
     cfg = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     w, h = width, height
-    P = lambda pts: _poly(pts, w, h)  # noqa: E731
+    warp = (lambda pts: view.to_view(pts)) if view is not None else (lambda pts: np.asarray(pts, float))
+    P = lambda pts: _poly(warp(pts), w, h)  # noqa: E731
+
+    def D(at, d):
+        """A direction attached to reference point `at`, as a unit vector in video pixels."""
+        d = view.direction_to_view(at, d) if view is not None else np.asarray(d, float)
+        return _unit(np.asarray(d) * [w, h])
 
     scene = Scene(width=w, height=h)
     if cfg.get("road"):
@@ -147,17 +155,23 @@ def load_scene(width: int, height: int, path: str | Path | None = None) -> Scene
     scene.exclude = [P(p) for p in cfg.get("exclude") or []]
     if cfg.get("crossings") is not None:
         scene.crossings = [P(p) for p in cfg["crossings"]]
-    scene.lanes = [Lane(l.get("name", f"lane{i}"), P(l["polygon"]), _unit(np.asarray(l["direction"]) * [w, h]))
+    scene.lanes = [Lane(l.get("name", f"lane{i}"), P(l["polygon"]),
+                        D(np.mean(l["polygon"], axis=0), l["direction"]))
                    for i, l in enumerate(cfg.get("lanes") or [])]
     scene.carriageways = [P(p) for p in cfg.get("carriageways") or []]
     scene.solid_lines = [P(l) for l in cfg.get("solid_lines") or []]
     scene.stop_lines = [StopLine(s.get("name", f"stop{i}"), P(s["line"]),
-                                 _unit(np.asarray(s["approach"]) * [w, h]), s.get("signal"))
+                                 D(np.mean(s["line"], axis=0), s["approach"]), s.get("signal"))
                         for i, s in enumerate(cfg.get("stop_lines") or [])]
     if cfg.get("intersection"):
         scene.intersection = P(cfg["intersection"])
-    scene.signals = {name: {lamp: (np.asarray(box, np.float32) * [w, h, w, h]) for lamp, box in lamps.items()}
-                     for name, lamps in (cfg.get("signals") or {}).items()}
+    scene.signals = {}
+    for name, lamps in (cfg.get("signals") or {}).items():
+        boxes = {}
+        for lamp, (x1, y1, x2, y2) in lamps.items():
+            corners = warp([[x1, y1], [x2, y2]]) * [w, h]
+            boxes[lamp] = np.float32([*corners.min(axis=0), *corners.max(axis=0)])
+        scene.signals[name] = boxes
     scene.zones = {k: P(v) for k, v in (cfg.get("zones") or {}).items()}
     scene.prohibited_turns = [tuple(p) for p in cfg.get("prohibited_turns") or []]
     scene.u_turn_allowed = [P(p) for p in cfg.get("u_turn_allowed") or []]

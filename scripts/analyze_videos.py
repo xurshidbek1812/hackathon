@@ -57,6 +57,7 @@ def main():
         if args.build_prior:
             meta = read_meta(str(path))
             prior = prior or FlowField(meta.width, meta.height)
+            prior.view = analysis.view          # accumulate every video in the reference view
             prior.add_tracks(analysis.tracks)
         risk = [] if args.no_risk else risk_curve(str(path))
         result = analysis_json(analysis, risk, name=path.name)

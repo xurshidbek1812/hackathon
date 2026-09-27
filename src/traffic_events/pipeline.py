@@ -12,6 +12,7 @@ from .flow import FlowField, build_flow
 from .frame_features import FrameFeatureCollector, FrameFeatures
 from .params import PipelineParams
 from .rules import Context, run_rules
+from .registration import ViewTransform, estimate_view_from_video
 from .scene import load_scene
 from .segments import Event, finalize
 from .signal_state import SignalMonitor, SignalTimeline
@@ -31,6 +32,7 @@ class Analysis:
     signals: dict[str, SignalTimeline]
     features: FrameFeatures | None
     stride: int
+    view: ViewTransform                  # this video's framing vs. the reference view
     seconds: float                       # wall-clock time of the analysis
 
     def event_lists(self) -> list[list]:
@@ -72,7 +74,8 @@ def analyze(video_path: str, params: PipelineParams = PipelineParams(), scene_pa
             progress: Progress | None = None) -> Analysis:
     t_start = time.perf_counter()
     meta = read_meta(video_path)
-    scene = load_scene(meta.width, meta.height, scene_path)
+    view = estimate_view_from_video(video_path)      # the camera is nudged between recordings
+    scene = load_scene(meta.width, meta.height, scene_path, view)
     detector = get_detector(params.detector)
     base_stride = max(1, round(meta.fps / params.sample_hz))
     budget = _Budget(meta.duration, params.budget_ratio_part_a, base_stride, params.max_stride)
@@ -113,7 +116,7 @@ def analyze(video_path: str, params: PipelineParams = PipelineParams(), scene_pa
     if progress:
         progress(0.92, "applying event rules")
     tracks = store.build()
-    flow = build_flow(tracks, meta.width, meta.height)
+    flow = build_flow(tracks, meta.width, meta.height, view=view)
     if not scene.has_road and flow.total > 0:
         scene.set_learned_road_mask(flow.road_mask())
     timelines = signals.timelines(meta.fps / budget.stride)
@@ -121,5 +124,5 @@ def analyze(video_path: str, params: PipelineParams = PipelineParams(), scene_pa
     events = finalize(run_rules(ctx), meta.duration, params.rules.min_event_sec, params.rules.merge_gap_sec)
     if progress:
         progress(1.0, "done")
-    return Analysis(meta, events, tracks, flow, timelines, features.result(), budget.stride,
+    return Analysis(meta, events, tracks, flow, timelines, features.result(), budget.stride, view,
                     time.perf_counter() - t_start)

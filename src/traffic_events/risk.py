@@ -26,8 +26,9 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from .detector import BIKE, PERSON, VEHICLE, get_detector
-from .flow import GRID_H, GRID_W, FlowField
+from .flow import FlowField
 from .params import DetectorParams, RiskParams
+from .registration import estimate_view
 from .scene import load_scene
 from .tracker import ByteTracker
 from .video import resize_to_width
@@ -74,11 +75,8 @@ class RiskModel:
         self.fps = float(meta.get("fps") or 25.0)
         self.width, self.height = int(meta["width"]), int(meta["height"])
         self.duration = float(meta.get("n_frames") or 0) / self.fps
-        self.scene = load_scene(self.width, self.height, self.scene_path)
-        self.flow = FlowField.load_prior(self.width, self.height)
-        self.flow_dirs = self.flow.direction_grid() if self.flow is not None else None
-        if not self.scene.has_road and self.flow is not None:
-            self.scene.set_learned_road_mask(self.flow.road_mask())
+        self._set_view(None)            # replaced by the real framing at the first frame
+        self.view_ready = False
         self.detector = get_detector(DetectorParams(weights=self.p.weights))
         self.work_w = min(self.width, self.p.imgsz)
         self.scale = self.width / self.work_w
@@ -93,8 +91,17 @@ class RiskModel:
         self.features: dict[str, float] = {}
         self._t0 = time.perf_counter()
 
+    def _set_view(self, view) -> None:
+        self.scene = load_scene(self.width, self.height, self.scene_path, view)
+        self.flow = FlowField.load_prior(self.width, self.height, view=view)
+        if not self.scene.has_road and self.flow is not None:
+            self.scene.set_learned_road_mask(self.flow.road_mask())
+
     # ------------------------------------------------------------------ stepping
     def step(self, frame: np.ndarray, t_sec: float) -> float:
+        if not self.view_ready:                 # align the scene to this recording's framing
+            self._set_view(estimate_view(frame))
+            self.view_ready = True
         i = self.frame_i
         self.frame_i += 1
         if i % self.stride:
@@ -220,9 +227,7 @@ class RiskModel:
                 continue
             if self.scene.intersection is not None and self.scene.inside(self.scene.intersection, p[None])[0]:
                 continue
-            gx = min(int(p[0] / self.width * GRID_W), GRID_W - 1)
-            gy = min(int(p[1] / self.height * GRID_H), GRID_H - 1)
-            d = self.flow_dirs[gy, gx]
+            d = self.flow.expected_direction(p[None])[0]
             if not np.isnan(d[0]) and float(v @ d) / np.linalg.norm(v) < -0.5:
                 return 1.0
         return 0.0
