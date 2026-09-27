@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="assets/style.css?v=9">
+<link rel="stylesheet" href="assets/style.css?v=10">
 </head>
 <body>
 <header class="topbar">
@@ -184,11 +184,26 @@
           (fire), grey growing low-texture regions (smoke). Part B runs its own causal tracker and combines
           time-to-collision, hard braking, swerving, wrong-way motion and pedestrians on the road into a logistic risk
           score with fast rise and slow decay.</p>
+        <h3>How we measured</h3>
+        <p>We labelled the sample videos ourselves with our <a href="tools/labeler.html">labeling tool</a>, following the task's
+          start/end conventions, and scored every change with the official <code>evaluate.py</code>. On the two videos labelled
+          first (C3896, C3897), Score&nbsp;A went from <b>0.04</b> for the first version to <b>0.31</b>:</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Class</th><th>Mean F1 (IoU 0.3 / 0.5 / 0.7)</th><th>What changed it</th></tr></thead>
+          <tbody>
+            <tr><td><b>Red-light running</b></td><td>1.00</td><td>runner may pause past the line; event ends when it leaves the junction or the frame</td></tr>
+            <tr><td><b>Stopped vehicle</b></td><td>0.67</td><td>only stops on a signal approach count as queuing; a parked car split by occlusion is re-joined</td></tr>
+            <tr><td><b>Solid-line crossing</b></td><td>0.29</td><td>lane dividers solid only from the gantry to the stop line</td></tr>
+            <tr><td><b>Pedestrian on roadway</b></td><td>0.23</td><td>margins scale with body height; islands count as footway</td></tr>
+            <tr><td><b>Not yielding to a pedestrian</b></td><td>0.00</td><td>still the weakest class: short events, hard to time</td></tr>
+          </tbody></table></div>
+        <p class="small">Classes we predicted but that were never labelled (accident, U-turn, stop line) each add a zero to the macro average, so most of the gain came from removing those false alarms.</p>
         <h3>What worked</h3>
         <ul>
           <li><b>Body-unit speeds.</b> Dividing pixel motion by box size made one set of thresholds work across the depth of the image.</li>
           <li><b>Looking at every candidate.</b> With no labels, we rendered each rule's candidate events on the frame and inspected them. The first full run on the 4K sample gave 86 events for 5&frac12; minutes of ordinary traffic; the fixes below brought it to 13 plausible ones.</li>
           <li><b>Signal-free red light.</b> The main approach's signal heads face away from the camera, so the red phase is inferred from the queue: at least two vehicles standing at the stop line for 5&nbsp;s and nothing crossing it.</li>
+          <li><b>Camera alignment.</b> The "fixed" camera was nudged between recordings by up to 5.7&nbsp;% of the frame &mdash; a lane width at the stop line. Each video is registered to our reference view (SIFT + RANSAC homography) and the whole scene layout is moved onto it.</li>
           <li><b>Overlapping decode and inference.</b> 4K H.264 decoding dominates the runtime; a reader thread (Part A) and a one-sample-lag detector worker (Part B) cut the harness time from 973&nbsp;s to 549&nbsp;s on a laptop GPU (budget 1021&nbsp;s).</li>
         </ul>
         <h3>What did not work (and what we changed)</h3>
@@ -239,8 +254,8 @@
 
 <footer><div class="wrap">Team Infinity · WIUT Hackathon 2026 · Computer Vision track</div></footer>
 
-<script src="config.js?v=9"></script>
-<script src="assets/charts.js?v=9"></script>
-<script src="assets/app.js?v=9"></script>
+<script src="config.js?v=10"></script>
+<script src="assets/charts.js?v=10"></script>
+<script src="assets/app.js?v=10"></script>
 </body>
 </html>
