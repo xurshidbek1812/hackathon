@@ -16,6 +16,9 @@ def jaywalking(ctx: Context) -> list[Event]:
         height = float(np.median(tr.box[:, 3] - tr.box[:, 1]))
         on = sc.on_road(tr.anchor, margin=rp.road_margin * height) & \
             ~sc.in_crossing(tr.anchor, rp.crossing_margin * height)
+        # pedestrian islands (the excluded areas) are footway: stepping off one is not jaywalking
+        for island in sc.exclude:
+            on &= ~sc.inside(island, tr.anchor, -rp.crossing_margin * height)
         for s, e in mask_to_segments(tr.t, on, min_dur=rp.jaywalk_min_sec, max_gap=1.0):
             events.append(Event(s, e, "jaywalking", min(1.0, 0.5 + (e - s) / 10), [tr.id]))
     return events
