@@ -74,7 +74,7 @@ class RuleParams:
     swerve_deg: float = 30.0
     near_miss_ttc: float = 1.2
     collision_min_scale: float = 0.025      # min sqrt(w*h) / frame height to judge contact
-    after_contact_slow_sec: float = 2.0
+    accident_min_closing: float = 2.0      # body units / s just before contact
     # obstacles / fire
     obstacle_min_sec: float = 2.0
     static_blob_min_sec: float = 8.0

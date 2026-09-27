@@ -2,9 +2,9 @@
 
 Contact  = boxes overlap AND their ground points are at a similar depth
            (otherwise it is just perspective occlusion).
-Accident = contact that was preceded by fast closing and followed by an
-           abrupt change: hard deceleration, a swerve, a pedestrian falling,
-           or the road users staying stopped together.
+Accident = contact preceded by fast closing, with an abrupt change (hard
+           deceleration or a swerve of a moving vehicle; a pedestrian falling)
+           and followed by a halt: a road user comes to rest or its track ends.
 Near miss = predicted time-to-collision below a threshold with an evasive
            action (hard braking or swerve) and no contact.
 """
@@ -129,34 +129,46 @@ def accident(ctx: Context) -> list[Event]:
         t = a.t[ia]
         for i0, i1 in runs(contact):
             tc = float(t[i0])
-            if t[i1] - t[i0] < 0.3:
-                continue
             pre = (t >= tc - 1.0) & (t < tc)
             closing = closing_speed(a, ia[pre], b, ib[pre]).max() if pre.any() else 0.0
             drop = max(speed_drop(a, tc), speed_drop(b, tc))
-            turn = max(swerve(a, tc), swerve(b, tc))
+            # heading noise of a crawling car is not a swerve: only road users that were moving count
+            turn = max([swerve(x, tc) for x in (a, b) if (x.speed[_window(x, tc - 1.0, tc)] >= 1.0).any()],
+                       default=0.0)
             fall = fell(a, tc) or fell(b, tc)
-            stay = t[i1] - t[i0] >= rp.after_contact_slow_sec and (
-                (a.speed[ia[i0:i1 + 1]] < 0.3).mean() > 0.6 or (b.speed[ib[i0:i1 + 1]] < 0.3).mean() > 0.6)
+            halted = _halted(a, tc) or _halted(b, tc)
             ped = PERSON in (a.category, b.category)
             if ped:
+                if t[i1] - t[i0] < 0.3:
+                    continue
                 vehicle = b if a.category == PERSON else a
                 # a car hitting a person moves and brakes hard; a box that only looks like a
                 # fall is usually the person being hidden by a passing car
                 if vehicle.speed[vehicle.at(tc)] < 1.0 or not fall or                         speed_drop(vehicle, tc) < 0.75 * rp.hard_decel:
                     continue
             else:
+                # the tracker loses identities at impact, so contact itself is often brief:
+                # judge the approach (fast closing), the impact (abrupt) and the aftermath (halt)
                 abrupt = drop >= rp.hard_decel or turn >= rp.swerve_deg
-                if closing < 1.0 or not abrupt or not stay:
+                if closing < rp.accident_min_closing or not abrupt or not halted:
                     continue                  # queues overlap but never close fast; crashes end at rest
                 if not _pushed_if_standing(a, b, tc):
                     continue                  # rolling up behind a standing car is not an impact
+            stay = halted
             evidence = (0.35 * min(closing / 1.5, 1.0) + 0.3 * min(drop / rp.hard_decel, 1.0)
                         + 0.15 * min(turn / rp.swerve_deg, 1.0) + 0.25 * stay + 0.4 * fall)
             end = min(max(_settle_time(ctx, a, tc), _settle_time(ctx, b, tc)), tc + 60.0)
             events.append(Event(tc, max(end, tc + 1.0), "accident", min(1.0, evidence), [a.id, b.id]))
             break
     return events
+
+
+def _halted(tr: Track, tc: float, win: float = 3.0) -> bool:
+    """Comes to rest soon after the contact, or its track ends there (swallowed by the wreck)."""
+    if tr.end < tc + 1.0:
+        return True
+    post = _window(tr, tc + 0.3, tc + win)
+    return bool(post.any() and (tr.speed[post] < 0.3).mean() > 0.4)
 
 
 def _pushed_if_standing(a: Track, b: Track, tc: float, push_bodies: float = 0.3) -> bool:

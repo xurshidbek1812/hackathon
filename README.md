@@ -142,6 +142,22 @@ to 13 plausible events were:
 
 The Part B cues were recalibrated the same way; on the sample (no accidents) the risk now stays below 0.2.
 
+### Classes the samples never show
+
+The four samples contain no accident, near miss, wrong-way driver, illegal turn, congestion, obstacle or fire.
+Staying silent on ~18 minutes of normal traffic shows those rules do not raise false alarms; whether they fire
+on the real thing was tested separately:
+
+- **Wrong way** — each of 100 real vehicle tracks from the samples was reversed in time (one at a time, among
+  the real traffic): the rule found **98 / 100**, and none of the untouched tracks.
+- **Accident** — 40 real crash clips from the ACCIDENT dataset (signalised intersections, daytime, 8 of each
+  crash type; other cameras, so our scene layout and lane prior were switched off). The first rule caught **0 / 40**:
+  it required the vehicles to stay in contact for 2 s, but the tracker loses identities at impact, so contact
+  lasts under a second. The rule now judges the approach (closing ≥ 2 body units/s), the impact (hard braking,
+  or a swerve of a vehicle that was actually moving) and the aftermath (a vehicle halts or its track ends):
+  **10 / 40** crashes found (F1 0.28 at tIoU 0.3), with **no** false accidents elsewhere in those clips or on the four samples.
+- **Illegal / U-turn** — synthetic trajectories in `tests/`.
+
 ## Reproducing the results
 
 ```bash
@@ -150,7 +166,7 @@ python scripts/analyze_videos.py --videos samples --build-prior    # website dat
 python scripts/eda.py --videos samples                              # EDA figures
 python scripts/render_annotated.py samples/*.mp4                    # annotated videos for the website
 python run_submission.py --videos samples --out predictions_samples.json
-python evaluate.py --pred predictions_samples.json --gt dev_labels.json   # our own dev labels
+python evaluate.py --pred predictions_samples.json --gt dev_labels/ground_truth.json   # our own dev labels
 pytest -q
 ```
 
@@ -173,8 +189,9 @@ runs at more than **twice** the time budget; on the target GPU it never triggers
 | YOLO11-m (Ultralytics), pre-trained on COCO | detector, used as is | AGPL-3.0 |
 | COCO 2017 (via the pre-trained weights) | — | CC BY 4.0 |
 | Competition sample videos | EDA, flow prior, dev labels | competition use |
+| [ACCIDENT](https://www.kaggle.com/datasets/picekl/accident) (Picek et al.), 40 real clips | testing and calibrating the accident rule and Part B only; not redistributed | CC BY-NC-SA 4.0 |
 
-No other external data is used. No hosted/paid model is called at any point.
+No other external data is used; nothing is trained on the test videos. No hosted/paid model is called at any point.
 
 ## Open-source code
 
