@@ -89,12 +89,39 @@ The starter kit arrived without `camera.md`, so `configs/scene.json` was drawn b
 pedestrian islands and median (excluded), the main approach's stop line, and the junction box. The signal
 heads of the main approach face away from the camera, so that stop line has no signal region: its phase is
 **inferred from the queue** (`rules/signal.py`, `QueuePhase`) — red when at least two other vehicles have been
-standing at the line for 5 s and no other vehicle has crossed it in the last 4 s. Lane directions, the road
-mask and signal-queue zones are learned from the sample trajectories (`configs/flow_prior.npz`).
+standing at the line for 5 s (or one for 10 s) and no other vehicle has crossed it in the last 4 s. The three
+lane dividers of the main approach are dashed up the road and **solid only from the signal gantry to the stop
+line**; they were located with a Hough transform on a car-free median frame. Lane directions are learned from
+the sample trajectories (`configs/flow_prior.npz`).
 
-### Calibration on the sample video
+### Camera alignment
 
-With no labels, every rule was checked by rendering its candidate events (tracks drawn on the frame) and
+The camera is fixed but was nudged and zoomed between recordings: relative to the reference view the sample
+videos are offset by 0.0 % (C3896, C3897), 3.4 % (C3905) and 5.7 % (C3902) of the frame width — enough to put a
+stop line or a lane divider a full lane off. `registration.py` matches SIFT keypoints of a frame against
+`configs/reference_view.png` (the view the scene was drawn on), fits a RANSAC homography and carries every
+polygon, line and direction of the scene into that video's view; the flow prior is kept in the reference view.
+Within one recording the view is stable (< 0.5 %), so Part A registers once on the middle frame and Part B on the
+first frame it receives (causal). With too few matches it falls back to the reference view.
+
+### Calibration on the sample videos
+
+**Dev set.** The team labelled the sample videos with `website/tools/labeler.html` following the task's
+start/end conventions (`dev_labels/team_labels.json`; `scripts/normalize_labels.py` merges simultaneous
+same-class events as the organisers' annotations do → `dev_labels/ground_truth.json`). Score A with the
+official `evaluate.py` on C3896 + C3897 went from **0.04** to **0.31** (red_light 1.00, stopped_vehicle 0.67,
+solid_line_crossing 0.29, jaywalking 0.23). What the labels taught us:
+
+| Labels showed | Fix |
+|---|---|
+| cars parked in the lane past the bus stop were suppressed as "signal queue" | a stop counts as queuing only on the approach to a stop line; a queue release needs real movement and a neighbour that waited alongside; buses never count |
+| a parked car is split into several tracks by passing traffic | stops at the same spot less than 10 s apart are joined |
+| a red-light runner paused past the line before entering the junction | red_light = crosses on red and enters the junction before green; ends when it leaves the junction or the frame |
+| false accidents: a car rolling up behind a standing truck, a pedestrian hidden by a passing car | a standing vehicle must be shoved by the impact; pedestrian contact needs a fall **and** hard braking |
+| false U-turns from two vehicles stitched together | U-turn apex must be at the median nose (`u_turn_zone`) |
+| pedestrians stepping off the islands | islands count as footway for jaywalking |
+
+**Before the labels**, every rule was checked by rendering its candidate events (tracks drawn on the frame) and
 inspecting them. The first full run produced 86 events on 340 s of ordinary traffic; the fixes that brought it
 to 13 plausible events were:
 
