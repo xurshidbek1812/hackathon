@@ -121,7 +121,8 @@ def analyze(video_path: str, params: PipelineParams = PipelineParams(), scene_pa
         scene.set_learned_road_mask(flow.road_mask())
     timelines = signals.timelines(meta.fps / budget.stride)
     ctx = Context(meta, scene, tracks, flow, timelines, features.result(), params.rules, params.motion)
-    events = finalize(run_rules(ctx), meta.duration, params.rules.min_event_sec, params.rules.merge_gap_sec)
+    events = finalize(run_rules(ctx), meta.duration, params.rules.min_event_sec, params.rules.merge_gap_sec,
+                      dict(params.rules.class_merge_gap_sec))
     if progress:
         progress(1.0, "done")
     return Analysis(meta, events, tracks, flow, timelines, features.result(), budget.stride, view,

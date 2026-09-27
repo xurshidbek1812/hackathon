@@ -48,12 +48,14 @@ def merge_intervals(segs, max_gap: float = 0.0) -> list[tuple[float, float]]:
     return [(s, e) for s, e in out]
 
 
-def finalize(events: list[Event], duration: float, min_dur: float, merge_gap: float) -> list[Event]:
+def finalize(events: list[Event], duration: float, min_dur: float, merge_gap: float,
+             class_gaps: dict[str, float] | None = None) -> list[Event]:
     """Clip to the video, drop blips, and union same-class events that touch.
 
     The task defines simultaneous same-class events as one segment covering
     both, and the harness drops same-class overlaps, so overlapping or nearly
-    touching events of one class are merged here.
+    touching events of one class are merged here; `class_gaps` overrides the
+    joining gap per class.
     """
     by_label: dict[str, list[Event]] = {}
     for ev in events:
@@ -64,10 +66,11 @@ def finalize(events: list[Event], duration: float, min_dur: float, merge_gap: fl
 
     out: list[Event] = []
     for label, evs in by_label.items():
+        gap = (class_gaps or {}).get(label, merge_gap)
         evs.sort(key=lambda x: x.start)
         cur = evs[0]
         for ev in evs[1:]:
-            if ev.start - cur.end <= merge_gap:
+            if ev.start - cur.end <= gap:
                 cur = Event(cur.start, max(cur.end, ev.end), label, max(cur.score, ev.score),
                             cur.track_ids + ev.track_ids)
             else:

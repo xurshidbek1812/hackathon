@@ -110,5 +110,51 @@
     "failure_to_yield"
    ]
   ]
+ },
+ "C3902.MP4": {
+  "duration": 317.82,
+  "fps": 29.97,
+  "events": [
+   [
+    0,
+    317.82,
+    "stopped_vehicle"
+   ],
+   [
+    52.59,
+    55.19,
+    "failure_to_yield"
+   ],
+   [
+    73.39,
+    76.65,
+    "solid_line_crossing"
+   ],
+   [
+    81.61,
+    191.25,
+    "jaywalking"
+   ],
+   [
+    100.6,
+    117.47,
+    "stop_line"
+   ],
+   [
+    211.77,
+    214.7,
+    "solid_line_crossing"
+   ],
+   [
+    232.52,
+    244.57,
+    "jaywalking"
+   ],
+   [
+    252.61,
+    271.01,
+    "jaywalking"
+   ]
+  ]
  }
 }

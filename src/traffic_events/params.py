@@ -87,6 +87,8 @@ class RuleParams:
     # post-processing
     min_event_sec: float = 0.8
     merge_gap_sec: float = 1.0
+    # people crossing in a stream: the annotations join them into one episode
+    class_merge_gap_sec: tuple = (("jaywalking", 8.0),)
 
 
 @dataclass(frozen=True)

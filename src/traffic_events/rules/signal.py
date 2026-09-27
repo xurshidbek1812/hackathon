@@ -145,11 +145,11 @@ def stop_line(ctx: Context) -> list[Event]:
     rp, mp = ctx.rp, ctx.mp
     events = []
     for sl, phase in _phases(ctx):
-        for tr in ctx.cars:
+        for tr in ctx.vehicles:          # motorcycles stop over the line too
             depth = line_depth(sl, tr.box, tr.scale)
             still = fill_short_gaps(tr.t, tr.speed < mp.stationary_speed, 1.0)
             for i0, i1 in runs(still):
-                if tr.t[i1] - tr.t[i0] < 2.0:
+                if tr.t[i1] - tr.t[i0] < QueuePhase.WAIT_SEC:      # too short to judge the phase
                     continue
                 # stopped with its front clearly past the line (not just touching it) but not in the junction
                 if not (0.5 <= depth[i0] <= 2.5):
