@@ -1,6 +1,10 @@
 """Publish the website + live demo as a Hugging Face Docker Space.
 
-    python demo/deploy_hf_space.py --space <user>/<space-name> --token <hf write token>
+    python demo/deploy_hf_space.py --space <user>/<space-name> --token <hf write token> [--static]
+
+Docker Spaces (website + live demo backend) need a paid Hugging Face plan;
+--static publishes only the website (free), whose demo section then points
+visitors to the local backend (or to `apiBase` in website/config.js).
 
 Stages only what the demo needs (code, scene config, website, the small CPU
 detector) with the Space's README header and Dockerfile, then uploads it.
@@ -30,6 +34,12 @@ Code: https://github.com/xurshidbek1812/hackathon
 """
 
 
+def stage_static(dst: Path) -> None:
+    shutil.copytree(ROOT / "website", dst, dirs_exist_ok=True)
+    header = SPACE_README.replace("sdk: docker\napp_port: 7860", "sdk: static\napp_file: index.html")
+    (dst / "README.md").write_text(header, encoding="utf-8")
+
+
 def stage(dst: Path) -> None:
     for rel in INCLUDE:
         src = ROOT / rel
@@ -48,11 +58,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--space", required=True, help="<user>/<space-name>")
     ap.add_argument("--token", required=True)
+    ap.add_argument("--static", action="store_true", help="website only (free Space, no demo backend)")
     args = ap.parse_args()
     api = HfApi(token=args.token)
-    api.create_repo(args.space, repo_type="space", space_sdk="docker", exist_ok=True)
+    api.create_repo(args.space, repo_type="space", space_sdk="static" if args.static else "docker", exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        stage(Path(tmp))
+        (stage_static if args.static else stage)(Path(tmp))
         api.upload_folder(folder_path=tmp, repo_id=args.space, repo_type="space",
                           commit_message="Deploy website and live demo")
     print(f"https://huggingface.co/spaces/{args.space}")

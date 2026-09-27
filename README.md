@@ -2,6 +2,8 @@
 
 Traffic event detection (Part A) and causal accident anticipation (Part B) for one fixed CCTV road camera.
 
+**Website:** https://xurshidbek1812-infinity-traffic.static.hf.space (approach, EDA, results on the four samples, report, team)
+
 ```bash
 pip install -r requirements.txt
 python run_submission.py --videos /data/test --out predictions.json
@@ -178,10 +180,12 @@ python evaluate.py --pred predictions_samples.json --gt dev_labels/ground_truth.
 pytest -q
 ```
 
-Live demo locally: `uvicorn demo.server:app --port 7860`, then open http://localhost:7860.
-Online, the same site and demo run as a Hugging Face Docker Space (`python demo/deploy_hf_space.py --space
-<user>/<name> --token <token>`). That host has no GPU, so it uses `DEMO_PROFILE=cpu`: the upload is decoded
-once into a 960 px copy and analysed with YOLO11-s at 5 frames per second (limits 2 min, 2.5 GB).
+Live demo (upload a video, get events, annotated playback and the risk curve): `uvicorn demo.server:app --port 7860`,
+then open http://localhost:7860. The public website is a free static Hugging Face Space
+(`python demo/deploy_hf_space.py --space <user>/<name> --token <token> --static`); the backend needs a server, so
+online its demo box points here. On a paid Docker Space the same script (without `--static`) publishes site and
+backend together; with no GPU it uses `DEMO_PROFILE=cpu`: the upload is decoded once into a 960 px copy and analysed
+with YOLO11-s at 5 frames per second (limits 2 min, 2.5 GB).
 
 ## Determinism
 
