@@ -157,6 +157,14 @@ on the real thing was tested separately:
   or a swerve of a vehicle that was actually moving) and the aftermath (a vehicle halts or its track ends):
   **10 / 40** crashes found (F1 0.28 at tIoU 0.3), with **no** false accidents elsewhere in those clips or on the four samples.
 - **Illegal / U-turn** — synthetic trajectories in `tests/`.
+- **Part B on real crashes** — we logged every risk cue on the 40 crash clips and the four samples to recalibrate
+  the weights. No cue separates the 5 s before a crash from normal traffic (per-cue AUC 0.45–0.51 against the
+  crash clips' own earlier frames; the "vehicles close together" cues are *more* frequent in our dense normal
+  traffic than before crashes), although Part B does see the vehicles (median 6 judgeable road users in the 2 s
+  before impact). Any re-weighting would raise the score on normal traffic as much as before crashes, so the
+  weights were left as they are: on the samples the risk never reaches the 0.5 alarm threshold (maximum 0.35).
+  Anticipating crashes from box trajectories alone is the clearest limitation of this solution; an appearance
+  model trained on crash footage (e.g. CCD / DoTA) is the next step.
 
 ## Reproducing the results
 

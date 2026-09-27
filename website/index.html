@@ -213,7 +213,8 @@
           <li><b>Identity switches in dense queues</b> produced fake U-turns and near misses. Stricter IoU gating, splitting tracks at physically impossible jumps and dropping boxes cut by the frame edge fixed most of them.</li>
           <li><b>Image-plane time-to-collision</b> flags platoons, merges and opposite carriageways (perspective squeezes the median). Near misses now require crossing paths held for 0.3&nbsp;s by road users large enough to judge.</li>
           <li><b>The learned road mask spilled onto the pavement</b> at the bus stop, turning waiting passengers into jaywalkers; we drew the carriageway by hand.</li>
-          <li><b>Accidents from rules alone are brittle.</b> On the sample (no crashes) the rule now stays silent, but we have not seen it fire on a real crash from this camera.</li>
+          <li><b>Accidents from rules alone are brittle.</b> On 40 real crash clips (ACCIDENT dataset) our first rule caught none: it wanted 2&nbsp;s of contact, but tracks break at impact. Judging approach, impact and halt instead finds 10 of 40 with no false alarms on our videos.</li>
+          <li><b>Crash anticipation from trajectories did not work.</b> On the same 40 clips no Part&nbsp;B cue separates the 5&nbsp;s before a crash from normal traffic, so we kept the risk model conservative: it never alarms on normal traffic.</li>
         </ul>
         <h3>What we would do next</h3>
         <ul>
